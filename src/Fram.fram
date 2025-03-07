@@ -1,6 +1,0 @@
-(* This file is part of Fram, released under MIT license.
- * See LICENSE for details.
- *)
-
-let _ =
-  printStrLn "I'm not implemented, yet."

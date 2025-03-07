@@ -1,0 +1,22 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+pub let compare {T, method lt: T -> T ->[] Bool} (x: T) (y: T) =
+    if      x < y then Less
+    else if y < x then Greater
+    else               Equal
+
+pub method rec assoc
+    {A, B, method equal: A -> A ->[] Bool, self: List (Pair A B)} (a: A)
+    =
+    match self with
+    | [] => None
+    | (a', b) :: xs =>
+        if a == a' then Some b else xs.assoc {A=A} {B=B} a
+    end
+
+pub let min {T, method lt: T -> T ->[] Bool} (a: T) (b: T) =
+    if a < b then a else b
+
+pub let ignore _ = ()
