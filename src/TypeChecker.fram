@@ -1,0 +1,75 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+import open Type
+import open Utils
+import open Expr
+import open Env
+import List
+import UVar
+
+implicit ~env: Env
+
+let rec unify (t0: Type) (t1: Type) =
+    match t0.view, t1.view with
+    | TUVar u0, TUVar u1 =>
+        if u0.id != u1.id
+        then t0.setUvar t1
+    | TUVar u, _ =>
+        if not (t1.containsUvar u.id)
+        then t0.setUvar t1
+        else runtimeError "Unification failure 1"
+    | _, TUVar u =>
+        if not (t0.containsUvar u.id)
+        then t1.setUvar t0
+        else runtimeError "Unification failure 2"
+    | TVar t0, TVar t1 =>
+        if t0.id == t1.id then () else runtimeError "Unification failure 3"
+    | TArr t0 t1, TArr t0' t1' =>
+        unify t0 t0';
+        unify t1 t1'
+    | TInt, TInt => ()
+    | TStr, TStr => ()
+    | _, _ => runtimeError "Unification failure 4"
+    end
+
+rec
+    pub let inferType {~env: Env} expr =
+        match expr with
+        | Integer _ => tInt
+        | Str     _ => tStr
+        | Var x =>
+            match ~env.getType x with
+            | Some scm =>
+                let sub = scm.tvars.toList.map (fn id => (id, freshUvar ())) in
+                scm.tp.withSub sub
+            | None => runtimeError ("Unbound var: " + x)
+            end
+        | Arr v e =>
+            let t0 = freshUvar () in
+            let ~env = ~env.addType v t0.toScm in
+            let t1 = inferType e in
+            tArr t0 t1
+        | App e0 e1 =>
+            let t0 = inferType e0 in
+            let t1 = inferType e1 in
+            let tx = freshUvar () in
+            unify t0 (tArr t1 tx);
+            tx
+        | Let x e0 e1 =>
+            let ~env = checkLet x e0 in
+            inferType e1
+        | _ => runtimeError "not implemented"
+        end
+
+    let checkLet {~env : Env} x e =
+        let outEnv = ~env in
+        let ~env = ~env.addLevel in
+        let tx = inferType e in
+        outEnv.addType x tx.generalize
+
+    let checkType {~env : Env} expr tp =
+        let tp' = inferType expr in
+        unify tp tp'
+end

@@ -1,0 +1,42 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+import open Mutable
+
+abstr data T U = {
+    id:     Int,
+    lvl:    Ref IO Int,
+    inner:  Ref IO (Option U)
+}
+
+pub method getType {self: T _} = self.inner.get
+pub method setType {self: T _} = self.inner.set
+
+let uvarCounter = ioMut.ref 0
+
+{#  Generates an unique UVar #}
+pub let fresh {Env, ~env: Env, method level: Env ->[] Int} () =
+    uvarCounter := uvarCounter.get + 1;
+    T {
+        id = uvarCounter.get,
+        lvl = ioMut.ref ~env.level,
+        inner = ioMut.ref None
+    }
+
+pub method id {self: T _} = self.id
+
+{#  `restrictScope` must be defined before `lvl` method as it shadows record field accessor.
+    This is an intended behaviour.
+#}
+pub method restrictScope {self: T _} lvl =
+    if self.lvl.get > lvl then self.lvl := lvl
+
+{# `lvl` is now read-only #}
+pub method lvl {self: T _} = self.lvl.get
+
+{# Work-around shadow for safety #}
+pub method inner {self: T _} =
+    runtimeError
+        "Abstract representation of UVar violated.
+        Use provided setters/getters."

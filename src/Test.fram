@@ -1,0 +1,26 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+import open TypeChecker
+import open Type
+import open Utils
+import open Mutable
+import Set
+import Map
+
+let ~env = Env { varMap = StrMap.empty, level = 0 }
+
+let test =
+    let testCounter = ioMut.ref 0 in
+    fn expr =>
+        testCounter := testCounter.get + 1;
+        let tp = inferType expr in
+        printStrLn
+            ("#" + testCounter.get.toString + ": " + tp.generalize.toString)
+
+let _ = test (Let "x" (Integer 2) (Var "x"))
+let _ = test (Let "id" (Arr "x" (Var "x")) (Var "id"))
+let _ = test (Let "id" (Arr "x" (Var "x")) (App (Var "id") (Var "id")))
+let _ = test (Arr "x" (Integer 3))
+let _ = test (Arr "y" (Arr "x" (Integer 3)))

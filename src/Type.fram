@@ -1,0 +1,137 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+import open Utils
+import UVar
+import TVar
+
+rec
+    abstr data Type = { inner: ViewType }
+
+    pub data ViewType =
+        | TInt
+        | TStr
+        | TUVar of UVar.T Type
+        | TVar  of TVar.T
+        | TArr  of Type, Type
+end
+
+let inject (vt: ViewType) = Type { inner = vt }
+
+pub let tInt = inject TInt
+pub let tStr = inject TStr
+pub let tArr t0 t1 = inject (TArr t0 t1)
+
+pub let freshUvar {Env, ~env: Env, method level: Env ->[] Int} () = 
+    inject (TUVar (UVar.fresh ()))
+
+pub let freshTvar {Env, ~env: Env, method level: Env ->[] Int} () =
+    inject (TVar  (TVar.fresh ()))
+
+abstr data Scheme = {
+    tvars: TVar.Set.T,
+    tp: Type
+}
+
+pub method toScm {self: Type} =
+    Scheme {
+        tvars = TVar.Set.empty,
+        tp = self
+    }
+
+pub method rec view {self: Type} =
+    match self.inner with
+    | TUVar u =>
+        match u.getType with
+        | None => self.inner
+        | Some tp =>
+            let tp = tp.view in
+            u.setType (Some (inject tp));
+            tp
+        end
+    | _ => self.inner
+    end : ViewType
+
+{# Work-around shadow for safety #}
+pub method inner {self: Type} =
+    runtimeError
+        "Abstract representation of Type violated.
+        Use provided setters/getters."
+
+pub method rec toString {self: Type} =
+    match self.view with
+    | TInt       => "TInt"
+    | TStr       => "TStr"
+    | TUVar u    => u.id.toString + "?"
+    | TVar t     => "'" + t.id.toString
+    | TArr t0 t1 => t0.toString + " -> " + t1.toString
+    end
+
+pub method toString {self: Scheme} = self.tp.toString
+
+pub method id {self: Type} =
+    match self.view with
+    | TVar  t   => t.id
+    | TUVar u   => u.id
+    | _         => runtimeError "not a type/unification variable"
+    end
+
+pub method rec restrictScope {self: Type} lvl =
+    match self.view with
+    | TUVar u    => u.restrictScope lvl
+    | TVar t     => if t.lvl > lvl then runtimeError "Escaping type variable"
+    | TArr t0 t1 => t0.restrictScope lvl; t1.restrictScope lvl
+    | _ => ()
+    end
+
+pub method setUvar {self: Type} (t: Type) =
+    match self.view with
+    | TUVar u =>
+        t.restrictScope u.lvl;
+        u.setType (Some t)
+    | _ => impossible {msg = "setVar called not on unification variable"} ()
+    end
+
+pub method rec containsUvar {self: Type} (id: Int) =
+    match self.view with
+    | TUVar u    => u.id == id
+    | TArr t0 t1 => t0.containsUvar id || t1.containsUvar id
+    | _          => False
+    end
+
+pub method rec withSub {self: Type} (sub: List (Pair Int Type)) =
+    match self.view with
+    | TVar t =>
+        match sub.assoc {A=Int} {B=Type} t.id with
+        | Some tp => tp
+        | None => self
+        end
+    | TArr t0 t1 => tArr (t0.withSub sub) (t1.withSub sub)
+    | _ => self
+    end
+
+pub method rec generalize
+    {Env, ~env: Env, method level: Env ->[] Int, self: Type}
+    =
+    match self.view with
+    | TUVar u =>
+        if u.lvl >= ~env.level then (
+            let t = freshTvar () in
+            let set = TVar.Set.empty.insert t.id in (
+            self.setUvar t;
+            Scheme {
+                tvars = set,
+                tp = self
+            })
+        ) else
+            self.toScm
+    | TArr t0 t1 =>
+        let scm0 = t0.generalize in
+        let scm1 = t1.generalize in
+        Scheme {
+            tvars = scm0.tvars.union scm1.tvars,
+            tp = tArr scm0.tp scm1.tp
+        }
+    | _ => self.toScm
+    end

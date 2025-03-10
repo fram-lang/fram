@@ -1,0 +1,24 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+import open Mutable
+import open Utils
+import Set
+
+abstr data T = {
+    id: Int,
+    lvl: Int
+}
+
+let tvarCounter = ioMut.ref 0
+
+pub let fresh {Env, ~env: Env, method level: Env ->[] Int} ()
+    =
+    tvarCounter := tvarCounter.get + 1;
+    T {
+        id = tvarCounter.get,
+        lvl = ~env.level
+    }
+
+pub let Set.Set {module Set} = Set.make (compare {T=Int})

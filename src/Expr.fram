@@ -1,0 +1,11 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+pub data rec Expr =
+    | Var of String
+    | Str of String
+    | Integer of Int
+    | Arr of String, Expr
+    | App of Expr, Expr
+    | Let of String, Expr, Expr
