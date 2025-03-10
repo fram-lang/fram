@@ -16,7 +16,8 @@ let test =
     fn expr =>
         testCounter := testCounter.get + 1;
         let tp = inferType expr in
-        printStrLn ("#" + testCounter.get.toString + ": " + tp.generalize.toString)
+        printStrLn
+            ("#" + testCounter.get.toString + ": " + tp.generalize.toString)
 
 let _ = test (Let "x" (Integer 2) (Var "x"))
 let _ = test (Let "id" (Arr "x" (Var "x")) (Var "id"))
