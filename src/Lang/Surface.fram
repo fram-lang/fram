@@ -88,13 +88,13 @@ pub data rec KindExpr =
   {## Kind of all effects. ##}
   | KEffect of { ~pos : Position }
 
-{## Position of the kind expressions in the source code. ##}
+{## Position of the kind expression in the source code. ##}
 pub method pos (self : KindExpr) =
   match self with
-  | KWildcard {~pos}  => ~pos
-  | KArrow {~pos} _ _ => ~pos
-  | KType {~pos}      => ~pos
-  | KEffect {~pos}    => ~pos
+  | KWildcard {~pos}     => ~pos
+  | KArrow    {~pos} _ _ => ~pos
+  | KType     {~pos}     => ~pos
+  | KEffect   {~pos}     => ~pos
   end
 
 {# ========================================================================= #}
@@ -112,7 +112,7 @@ rec
     {## Effect: a list of simple effects. ##}
     | TEffect of { ~pos : Position }, List TypeExpr
 
-    {## Total arrow: a function without effects, that always terminates. ##}
+    {## Total arrow: a function without effects that always terminates. ##}
     | TTotArrow of { ~pos : Position }, SchemeExpr, TypeExpr
 
     {## Effectful arrow. The last parameter is an effect. ##}
@@ -134,7 +134,7 @@ rec
       , inType  : TypeExpr
 
         {## The inner effect of the handler. ##}
-      , inEff  : TypeExpr
+      , inEff   : TypeExpr
 
         {## The outer type of the handler, i.e., the type of the whole handler
           expression. ##}
@@ -235,7 +235,7 @@ pub method arg  (NamedTypeArg { arg  }) = arg
 {# ========================================================================= #}
 {## ## ADT Constructors ##}
 
-{## Declaration of ADT constructor. ##}
+{## Declaration of an ADT constructor. ##}
 data CtorDecl = CtorDecl of
   { ~pos       : Position
   , name       : CtorName
@@ -252,12 +252,12 @@ rec
     {## Wildcard pattern. ##}
     | PWildcard of { ~pos : Position }
 
-    {## Pattern that binds the identifier. ##}
+    {## Pattern that binds an identifier. ##}
     | PId of { ~pos : Position, isPublic : IsPublic }, Ident
 
     {## ADT constructor pattern. ##}
     | PCtor of
-      { ~pos : Position}, Path CtorName, List NamedPattern, List Pattern
+      { ~pos : Position }, Path CtorName, List NamedPattern, List Pattern
 
     {## Scheme annotation. ##}
     | PAnnot of { ~pos : Position }, Pattern, SchemeExpr
@@ -316,7 +316,7 @@ rec
     | EImplicit of Path IName
 
     {## Call of a method. ##}
-    | EMethod   of { ~pos : Position}, Expr, MethodName
+    | EMethod   of { ~pos : Position }, Expr, MethodName
 
   {## Polymorphic expression, at the place of definition. ##}
   pub data PolyExprDef =
@@ -381,10 +381,10 @@ rec
     {## Explicit instantiation of a value parameter. ##}
     | IVal  of { ~pos : Position }, Name, PolyExprDef
 
-    {## Explicit instantiation, that takes values from given module. ##}
+    {## Explicit instantiation that takes values from given module. ##}
     | IModule of { ~pos : Position }, Path ModuleName
 
-    {## Explicit instantiation, that takes values from the environment. ##}
+    {## Explicit instantiation that takes values from the environment. ##}
     | IOpen   of { ~pos : Position }
 
   {## Pattern-matching clause. ##}
@@ -436,7 +436,7 @@ rec
       {## A flag indicating that the type is public. ##}
       , publicType : IsPublic
 
-      {## A flag indication that the constructors are visible. ##}
+      {## A flag indicating that the constructors are visible. ##}
       , publicCtors : IsPublic
 
       {## Type variable that represents this ADT. ##}
@@ -558,7 +558,7 @@ pub data Import =
 {## Position of the import in the source code. ##}
 pub method pos (self : Import) =
   match self with
-  | ImportAs {~pos} _ _   => ~pos
+  | ImportAs   {~pos} _ _ => ~pos
   | ImportOpen {~pos} _   => ~pos
   end
 
