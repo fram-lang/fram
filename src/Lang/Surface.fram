@@ -42,8 +42,8 @@ pub type ModuleName = String
 
 {## Name of a named type parameter. ##}
 pub data TName =
-  | TNAnon
-  | TNVar of TVar
+  | TN_Anon
+  | TN_Var of TVar
 
 {## Name of a named parameter. ##}
 pub data Name =
@@ -60,14 +60,14 @@ pub data Ident =
 
 {## Module path to the identifier. ##}
 pub data rec Path T =
-  | NPName of { ~pos : Position }, T
-  | NPSel  of { ~pos : Position }, Path ModuleName, T
+  | MP_Name of { ~pos : Position }, T
+  | MP_Sel  of { ~pos : Position }, Path ModuleName, T
 
 {## Position of the module path in the source code. ##}
 pub method pos (self : Path _) =
   match self with
-  | NPName {~pos} _   => ~pos
-  | NPSel  {~pos} _ _ => ~pos
+  | MP_Name {~pos} _   => ~pos
+  | MP_Sel  {~pos} _ _ => ~pos
   end
 
 {# ========================================================================= #}
@@ -463,8 +463,8 @@ rec
       , body : TypeExpr
       }
 
-    {## Block of definitions that share parameter declarations. ##}
-    | DBlock of { ~pos : Position }, List Def
+    {## Section: a block of definitions that share parameter declarations. ##}
+    | DSection of { ~pos : Position }, List Def
 
     {## Mutually recursive definitions. ##}
     | DRec of { ~pos : Position }, List Def
@@ -533,7 +533,7 @@ pub method pos (self : Def) =
   | DValParam  {~pos} _ _ _ => ~pos
   | DData      {~pos}       => ~pos
   | DType      {~pos}       => ~pos
-  | DBlock     {~pos} _     => ~pos
+  | DSection   {~pos} _     => ~pos
   | DRec       {~pos} _     => ~pos
   | DModule    {~pos} _ _   => ~pos
   | DOpen      {~pos} _     => ~pos
@@ -544,8 +544,8 @@ pub method pos (self : Def) =
 
 {## Path to an imported module tagged as absolute or relative. ##}
 pub data ImportPath =
-  | IPAbsolute of List ModuleName, ModuleName
-  | IPRelative of List ModuleName, ModuleName
+  | IP_Absolute of List ModuleName, ModuleName
+  | IP_Relative of List ModuleName, ModuleName
 
 {## Module import. ##}
 pub data Import =
@@ -564,6 +564,7 @@ pub method pos (self : Import) =
 
 {## File. ##}
 pub data File =
-  { imports : List Import
+  { pos     : Position
+  , imports : List Import
   , defs    : List Def
   }
