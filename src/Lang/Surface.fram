@@ -50,7 +50,7 @@ pub data Name =
   | NVar         of Var
   | NOptionalVar of Var
   | NImplicit    of IName
-  | NMethod      of MethodName 
+  | NMethod      of MethodName
 
 {## Identifier, i.e., object that can be bound in patterns. ##}
 pub data Ident =
@@ -236,7 +236,7 @@ pub method arg  (NamedTypeArg { arg  }) = arg
 {## ## ADT Constructors ##}
 
 {## Declaration of an ADT constructor. ##}
-data CtorDecl = CtorDecl of
+pub data CtorDecl = CtorDecl of
   { ~pos       : Position
   , name       : CtorName
   , namedArgs  : List SchemeArg
@@ -362,7 +362,7 @@ rec
     {## Effectful operation. The only argument is a continuation. ##}
     | EEffect of
       { ~pos    : Position
-      , ?label  : Expr 
+      , ?labl   : Expr
       , contPat : Pattern
       , body    : Expr
       }
@@ -419,7 +419,7 @@ rec
       , effct      : TypeArg
 
         {## The expression that should evaluate to a first-class handler,
-          providing the capability of the handled effect. ##} 
+          providing the capability of the handled effect. ##}
       , capBody    : Expr
       }
 
