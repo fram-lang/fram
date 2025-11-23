@@ -1,0 +1,570 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+{## # The Surface Language ##}
+
+{## Location in the source code.
+
+  TODO: it will be replaced by correct definition ##}
+pub type Position = Unit
+
+{## Visibility of the definition. ##}
+pub type IsPublic = Bool
+
+{## Literal. ##}
+pub data Literal =
+  | LInt   of Int
+  | LInt64 of Int64
+  | LStr   of String
+  | LChar  of Char
+
+{# ========================================================================= #}
+{## ## Identifiers and Names ##}
+
+{## Type variable. ##}
+pub type TVar = String
+
+{## Variable. ##}
+pub type Var = String
+
+{## Name of an implicit parameter. ##}
+pub type IName = String
+
+{## Name of an ADT constructor. ##}
+pub type CtorName = String
+
+{## Name of a method. ##}
+pub type MethodName = String
+
+{## Name of a module. ##}
+pub type ModuleName = String
+
+{## Name of a named type parameter. ##}
+pub data TName =
+  | TN_Anon
+  | TN_Var of TVar
+
+{## Name of a named parameter. ##}
+pub data Name =
+  | NVar         of Var
+  | NOptionalVar of Var
+  | NImplicit    of IName
+  | NMethod      of MethodName
+
+{## Identifier, i.e., object that can be bound in patterns. ##}
+pub data Ident =
+  | IdVar      of Var
+  | IdImplicit of IName
+  | IdMethod   of MethodName
+
+{## Module path to the identifier. ##}
+pub data rec Path T =
+  | MP_Name of { ~pos : Position }, T
+  | MP_Sel  of { ~pos : Position }, Path ModuleName, T
+
+{## Position of the module path in the source code. ##}
+pub method pos (self : Path _) =
+  match self with
+  | MP_Name {~pos} _   => ~pos
+  | MP_Sel  {~pos} _ _ => ~pos
+  end
+
+{# ========================================================================= #}
+{## ## Kinds ##}
+
+{## Kind expression. ##}
+pub data rec KindExpr =
+  {## A placeholder for a kind, treated as a fresh kind unification variable.
+  ##}
+  | KWildcard of { ~pos : Position }
+
+  {## Arrow kind. ##}
+  | KArrow of { ~pos : Position }, KindExpr, KindExpr
+
+  {## Kind of all types. ##}
+  | KType of { ~pos : Position }
+
+  {## Kind of all effects. ##}
+  | KEffect of { ~pos : Position }
+
+{## Position of the kind expression in the source code. ##}
+pub method pos (self : KindExpr) =
+  match self with
+  | KWildcard {~pos}     => ~pos
+  | KArrow    {~pos} _ _ => ~pos
+  | KType     {~pos}     => ~pos
+  | KEffect   {~pos}     => ~pos
+  end
+
+{# ========================================================================= #}
+{## ## Type Expressions ##}
+
+rec
+  {## Type expression. ##}
+  pub data TypeExpr =
+    {## A placeholder for a type, treated as a fresh unification variable. ##}
+    | TWildcard of { ~pos : Position }
+
+    {## A (non-unification) type variable. ##}
+    | TVar of Path TVar
+
+    {## Effect: a list of simple effects. ##}
+    | TEffect of { ~pos : Position }, List TypeExpr
+
+    {## Total arrow: a function without effects that always terminates. ##}
+    | TTotArrow of { ~pos : Position }, SchemeExpr, TypeExpr
+
+    {## Effectful arrow. The last parameter is an effect. ##}
+    | TArrow of { ~pos : Position }, SchemeExpr, TypeExpr, TypeExpr
+
+    {## First-class handler. ##}
+    | THandler of
+      { ~pos    : Position
+
+        {## Effect variable bound by this handler. It can be used in `capType`,
+          `inType`, and `inEff`. ##}
+      , effct   : TVar
+
+        {## Type of the capability provided by the handler. ##}
+      , capType : TypeExpr
+
+        {## The inner type of the handler, i.e., the type of an expression that
+          can be run in this handler. ##}
+      , inType  : TypeExpr
+
+        {## The inner effect of the handler. ##}
+      , inEff   : TypeExpr
+
+        {## The outer type of the handler, i.e., the type of the whole handler
+          expression. ##}
+      , outType : TypeExpr
+
+        {## The outer effect of the handler. ##}
+      , outEff  : TypeExpr
+      }
+
+    {## First-class label. ##}
+    | TLabel of
+      { ~pos      : Position
+
+        {## Effect of this label. Usually a type variable. ##}
+      , effct     : TypeExpr
+
+        {## The type of the delimiter. ##}
+      , delimType : TypeExpr
+
+        {## The effect of the delimiter. ##}
+      , delimEff  : TypeExpr
+      }
+
+    {## Type-level application. ##}
+    | TApp of { ~pos : Position }, TypeExpr, TypeExpr
+
+  {## Type scheme. ##}
+  pub data SchemeExpr = SchemeExpr of
+    { ~pos : Position
+    , args : List SchemeArg
+    , body : TypeExpr
+    }
+
+  {## Named parameter of the type scheme. ##}
+  pub data SchemeArg =
+    {## Type parameter. ##}
+    | SA_Type of { ~pos : Position }, TName, TVar, KindExpr
+
+    {## Value parameter. ##}
+    | SA_Val  of { ~pos : Position }, Name, SchemeExpr
+end
+
+{## Position of the type expression in the source code. ##}
+pub method pos (self : TypeExpr) =
+  match self with
+  | TWildcard {~pos}       => ~pos
+  | TVar      path         => path.pos
+  | TEffect   {~pos} _     => ~pos
+  | TTotArrow {~pos} _ _   => ~pos
+  | TArrow    {~pos} _ _ _ => ~pos
+  | THandler  {~pos}       => ~pos
+  | TLabel    {~pos}       => ~pos
+  | TApp      {~pos} _ _   => ~pos
+  end
+
+{## Position of the type scheme in the source code. ##}
+pub method pos  (SchemeExpr { ~pos }) = ~pos
+
+pub method args (SchemeExpr { args }) = args
+pub method body (SchemeExpr { body }) = body
+
+{## Position of the scheme argument in the source code. ##}
+pub method pos (self : SchemeArg) =
+  match self with
+  | SA_Type {~pos} _ _ _ => ~pos
+  | SA_Val  {~pos} _ _   => ~pos
+  end
+
+{# ========================================================================= #}
+{## ## Type Parameters ##}
+
+{## Formal type parameter. ##}
+pub data TypeArg =
+  {## Type variable. ##}
+  | TA_Var of { ~pos : Position }, TVar, KindExpr
+
+  {## Wildcard. ##}
+  | TA_Wildcard of { ~pos : Position }
+
+{## Position of the type argument in the source code. ##}
+pub method pos (self : TypeArg) =
+  match self with
+  | TA_Var {~pos} _ _  => ~pos
+  | TA_Wildcard {~pos} => ~pos
+  end
+
+{## Named formal type parameter. ##}
+pub data NamedTypeArg = NamedTypeArg of
+  { ~pos : Position
+  , name : TName
+  , arg  : TypeArg
+  }
+
+pub method pos  (NamedTypeArg { ~pos }) = ~pos
+pub method name (NamedTypeArg { name }) = name
+pub method arg  (NamedTypeArg { arg  }) = arg
+
+{# ========================================================================= #}
+{## ## ADT Constructors ##}
+
+{## Declaration of an ADT constructor. ##}
+pub data CtorDecl = CtorDecl of
+  { ~pos       : Position
+  , name       : CtorName
+  , namedArgs  : List SchemeArg
+  , argSchemes : List SchemeExpr
+  }
+
+{# ========================================================================= #}
+{## ## Patterns ##}
+
+rec
+  {## Pattern. ##}
+  pub data Pattern =
+    {## Wildcard pattern. ##}
+    | PWildcard of { ~pos : Position }
+
+    {## Pattern that binds an identifier. ##}
+    | PId of { ~pos : Position, isPublic : IsPublic }, Ident
+
+    {## ADT constructor pattern. ##}
+    | PCtor of
+      { ~pos : Position }, Path CtorName, List NamedPattern, List Pattern
+
+    {## Scheme annotation. ##}
+    | PAnnot of { ~pos : Position }, Pattern, SchemeExpr
+
+  {## Pattern for a named parameter. ##}
+  pub data NamedPattern =
+    {## Type parameter. ##}
+    | NP_Type of { isPublic : IsPublic }, NamedTypeArg
+
+    {## Value parameter. ##}
+    | NP_Val of
+      { ~pos    : Position
+
+        {## The optional scheme annotation is distinct from the type
+          annotation from the grammar of patterns, because it is treated
+          differently for optional parameters. For example `?x : T` should
+          bind `x` of type `Option T`. ##}
+      , ?scheme : SchemeExpr
+      }, Name, Pattern
+  
+    {## Bind everything into a module. ##}
+    | NP_Module of { ~pos : Position, isPublic : IsPublic }, ModuleName
+  
+    {## Introduce everything into the environment. ##}
+    | NP_Open   of { ~pos : Position, isPublic : IsPublic }
+end
+
+{## Position of the pattern in the source code. ##}
+pub method pos (self : Pattern) =
+  match self with
+  | PWildcard {~pos}       => ~pos
+  | PId       {~pos} _     => ~pos
+  | PCtor     {~pos} _ _ _ => ~pos
+  | PAnnot    {~pos} _ _   => ~pos
+  end
+
+{## Position of the named pattern in the source code. ##}
+pub method pos (self : NamedPattern) =
+  match self with
+  | NP_Type   arg        => arg.pos
+  | NP_Val    {~pos} _ _ => ~pos
+  | NP_Module {~pos} _   => ~pos
+  | NP_Open   {~pos}     => ~pos
+  end
+
+{# ========================================================================= #}
+{## ## Expressions ##}
+
+rec
+  {## Polymorphic expression, at the place of use. ##}
+  pub data PolyExprUse =
+    {## Variable. ##}
+    | EVar of Path Var
+
+    {## Implicit parameter. ##}
+    | EImplicit of Path IName
+
+    {## Call of a method. ##}
+    | EMethod   of { ~pos : Position }, Expr, MethodName
+
+  {## Polymorphic expression, at the place of definition. ##}
+  pub data PolyExprDef =
+    {## Expression. ##}
+    | PE_Expr of Expr
+
+    {## Polymorphic expression. ##}
+    | PE_PolyExpr of PolyExprUse
+
+    {## Polymorphic function. ##}
+    | PE_Fn of { ~pos : Position }, List NamedPattern, Expr
+
+  {## Expression. ##}
+  pub data Expr =
+    {## Literal. ##}
+    | ELit of { ~pos : Position }, Literal
+
+    {## Polymorphic expression with partial explicit instantiation, possibly
+      empty. ##}
+    | EPoly of { ~pos : Position }, PolyExprUse, List Inst
+
+    {## Lambda abstraction. ##}
+    | EFn   of { ~pos : Position }, Pattern, Expr
+
+    {## Function application. ##}
+    | EApp  of { ~pos : Position }, Expr, PolyExprDef
+
+    {## Local definitions. ##}
+    | EDefs of { ~pos : Position }, List Def, Expr
+
+    {## Pattern-matching. ##}
+    | EMatch of { ~pos : Position }, Expr, List MatchClause
+
+    {## First-class handler, with return and finally clauses. For each of these
+      clause lists, empty list means the default identity clause. ##}
+    | EHandler of
+      { ~pos       : Position
+      , hExpr      : Expr
+      , returnCls  : List MatchClause
+      , finallyCls : List MatchClause
+      }
+
+    {## Effectful operation. The only argument is a continuation. ##}
+    | EEffect of
+      { ~pos    : Position
+      , ?labl   : Expr
+      , contPat : Pattern
+      , body    : Expr
+      }
+
+    {## Externally defined value. ##}
+    | EExtern of { ~pos : Position }, String
+
+    {## Type annotation. ##}
+    | EAnnot of { ~pos : Position }, Expr, TypeExpr
+
+  {## Explicit instantiation of named parameters in polymorphic expression. ##}
+  pub data Inst =
+    {## Explicit instantiation of a type variable. ##}
+    | IType of { ~pos : Position }, TVar, TypeExpr
+
+    {## Explicit instantiation of a value parameter. ##}
+    | IVal  of { ~pos : Position }, Name, PolyExprDef
+
+    {## Explicit instantiation that takes values from given module. ##}
+    | IModule of { ~pos : Position }, Path ModuleName
+
+    {## Explicit instantiation that takes values from the environment. ##}
+    | IOpen   of { ~pos : Position }
+
+  {## Pattern-matching clause. ##}
+  pub data MatchClause = MatchClause of
+    { ~pos    : Position
+    , pattern : Pattern
+    , body    : Expr
+    }
+
+  {## Definition. ##}
+  pub data Def =
+    {## Let definition (monomorphic or polymorphic, depending on the effect of
+      the body). ##}
+    | DLetId of
+      { ~pos : Position, isPublic : IsPublic },
+      Ident, PolyExprDef
+
+    {## Let definition combined with pattern-matching. Always monomorphic. ##}
+    | DLetPat of { ~pos : Position }, Pattern, Expr
+
+    {## Creating a new label. ##}
+    | DLabel of { ~pos : Position }, TypeArg, Pattern
+
+    {## Effect handler combined with pattern-matching. ##}
+    | DHandler of
+      { ~pos       : Position
+
+        {## Pattern matched against the effect capability. ##}
+      , capPattern : Pattern
+
+        {## A name for the handled effect. ##}
+      , effct      : TypeArg
+
+        {## The expression that should evaluate to a first-class handler,
+          providing the capability of the handled effect. ##}
+      , capBody    : Expr
+      }
+
+    {## Declaration of a type parameter. ##}
+    | DTypeParam of { ~pos : Position }, TName, TVar, KindExpr
+
+    {## Declaration of a value parameter. ##}
+    | DValParam of { ~pos : Position }, Name, Ident, Option SchemeExpr
+
+    {## Definition of an algebraic data type (ADT). ##}
+    | DData of
+      { ~pos : Position
+
+      {## A flag indicating that the type is public. ##}
+      , publicType : IsPublic
+
+      {## A flag indicating that the constructors are visible. ##}
+      , publicCtors : IsPublic
+
+      {## Type variable that represents this ADT. ##}
+      , tvar : TVar
+
+      {## List of type parameters. ##}
+      , args : List NamedTypeArg
+
+      {## List of constructors. ##}
+      , ctors : List CtorDecl
+      }
+
+    {## Type alias. ##}
+    | DType of
+      { ~pos : Position
+
+      {## A flag indicating that the type is public. ##}
+      , publicType : IsPublic
+
+      {## Type variable that represents this type alias. ##}
+      , tvar : TVar
+
+      {## Body of the type alias. ##}
+      , body : TypeExpr
+      }
+
+    {## Section: a block of definitions that share parameter declarations. ##}
+    | DSection of { ~pos : Position }, List Def
+
+    {## Mutually recursive definitions. ##}
+    | DRec of { ~pos : Position }, List Def
+
+    {## Definition of a module. ##}
+    | DModule of { ~pos : Position, isPublic : IsPublic }, ModuleName, List Def
+
+    {## Opening a module. ##}
+    | DOpen of { ~pos : Position, isPublic : IsPublic }, Path ModuleName
+end
+
+{## Position of the expression in the source code. ##}
+pub method pos (self : Expr) =
+  match self with
+  | ELit     {~pos} _   => ~pos
+  | EPoly    {~pos} _ _ => ~pos
+  | EFn      {~pos} _ _ => ~pos
+  | EApp     {~pos} _ _ => ~pos
+  | EDefs    {~pos} _ _ => ~pos
+  | EMatch   {~pos} _ _ => ~pos
+  | EHandler {~pos}     => ~pos
+  | EEffect  {~pos}     => ~pos
+  | EExtern  {~pos} _   => ~pos
+  | EAnnot   {~pos} _ _ => ~pos
+  end
+
+{## Position of the polymorphic expression in the source code. ##}
+pub method pos (self : PolyExprUse) =
+  match self with
+  | EVar      path       => path.pos
+  | EImplicit path       => path.pos
+  | EMethod   {~pos} _ _ => ~pos
+  end
+
+{## Position of the polymorphic expression in the source code. ##}
+pub method pos (self : PolyExprDef) =
+  match self with
+  | PE_Expr      e   => e.pos
+  | PE_PolyExpr  e   => e.pos
+  | PE_Fn {~pos} _ _ => ~pos
+  end
+
+{## Position of the explicit instantiation in the source code. ##}
+pub method pos (self : Inst) =
+  match self with
+  | IType    {~pos} _ _ => ~pos
+  | IVal     {~pos} _ _ => ~pos
+  | IModule  {~pos} _   => ~pos
+  | IOpen    {~pos}     => ~pos
+  end
+
+{## Position of the match clause in the source code. ##}
+pub method pos (MatchClause { ~pos }) = ~pos
+
+pub method pattern (MatchClause { pattern }) = pattern
+pub method body    (MatchClause { body    }) = body
+
+{## Position of the definition in the source code. ##}
+pub method pos (self : Def) =
+  match self with
+  | DLetId     {~pos} _ _   => ~pos
+  | DLetPat    {~pos} _ _   => ~pos
+  | DLabel     {~pos} _ _   => ~pos
+  | DHandler   {~pos}       => ~pos
+  | DTypeParam {~pos} _ _ _ => ~pos
+  | DValParam  {~pos} _ _ _ => ~pos
+  | DData      {~pos}       => ~pos
+  | DType      {~pos}       => ~pos
+  | DSection   {~pos} _     => ~pos
+  | DRec       {~pos} _     => ~pos
+  | DModule    {~pos} _ _   => ~pos
+  | DOpen      {~pos} _     => ~pos
+  end
+
+{# ========================================================================= #}
+{## ## Source Files ##}
+
+{## Path to an imported module tagged as absolute or relative. ##}
+pub data ImportPath =
+  | IP_Absolute of List ModuleName, ModuleName
+  | IP_Relative of List ModuleName, ModuleName
+
+{## Module import. ##}
+pub data Import =
+  {## Import as given module name. ##}
+  | ImportAs of { ~pos : Position }, ImportPath, ModuleName
+
+  {## Import and immediately open the module. ##}
+  | ImportOpen of { ~pos : Position }, ImportPath
+
+{## Position of the import in the source code. ##}
+pub method pos (self : Import) =
+  match self with
+  | ImportAs   {~pos} _ _ => ~pos
+  | ImportOpen {~pos} _   => ~pos
+  end
+
+{## File. ##}
+pub data File =
+  { pos     : Position
+  , imports : List Import
+  , defs    : List Def
+  }
