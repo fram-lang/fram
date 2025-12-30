@@ -3,6 +3,10 @@ import Map as M
 import List as L
 import String as S
 
+# dubugs
+let print = extern dbl_printStrLn : String -> Unit
+let show {X, method show : X ->> String} (e : X) = print e.show
+
 # -----------------------------------------------------------------------------
 # Possible additions to stdlib
 method mem (str : String) (chr : Char) =
@@ -11,19 +15,20 @@ method mem (str : String) (chr : Char) =
   | None   => False
   end
 
-method startsWith {?pos : Int} (str : String) (prefix : String) =
-  if str.length < prefix.length then
+method contains {?pos : Int} (str : String) (prefix : String) =
+  let startPos = pos.unwrapOr 0 in
+  if str.length - startPos < prefix.length then
     False
   else
-   (let rec iter i =
-      if i >= prefix.length then
+   (let rec iter i1 i2 =
+      if i1 - startPos >= prefix.length then
         True
-      else if (prefix.get i != str.get i) then
+      else if (str.get i1 != prefix.get i2) then
         False
       else
-        iter (i + 1)
+        iter (i1 + 1) (i2 + 1)
     in
-    iter (pos.unwrapOr 0))
+    iter startPos 0)
 
 # -----------------------------------------------------------------------------
 # Fatal errors
@@ -58,9 +63,10 @@ method getChar (Caret {idx, str}) =
     ~err.raise "getChar - out of position"
 
 data LexBuf E =
-  { seek     : Unit   ->[E] Unit
-  , curr     : Unit   ->[E] Option Char
-  , tryMatch : String ->[E] Bool 
+  { seek      : Unit   ->[E] Unit
+  , curr      : Unit   ->[E] Option Char
+  , tryMatch  : String ->[E] Bool
+  , caret     : Unit   ->[E] Caret
   }
 
 let lexBufH caret =
@@ -70,18 +76,23 @@ let lexBufH caret =
     , effect curr () / r = fn (c : Caret) =>
       r c.getChar c
     , effect tryMatch pattern / r = fn (c : Caret) =>
-      if c.str.startsWith {pos=c.idx} pattern then
+      if c.str.contains {pos=c.idx} pattern then
        (let c = c.moveBy (pattern.length) in
         r True c)
       else
         r False c
-      }
+    , effect caret () / r = fn c => r c c
+    }
   return x => fn c => (x, c)
   finally c => c caret
   end
 
 parameter E_LexBuf
 parameter ~lb : LexBuf E_LexBuf
+
+let getCaret () = ~lb.caret ()
+let currChar () = ~lb.curr ()
+let tryMatch pttrn = ~lb.tryMatch pttrn
 
 # -----------------------------------------------------------------------------
 # Position tracker
@@ -179,6 +190,23 @@ let popChar () =
     Some ch
   end
 
+let takeWhile pred =
+  let caret = getCaret () in
+  let rec iter (count : Int) =
+    let cond =
+      match ~lb.curr () with
+      | None => False
+      | Some x => pred x
+      end
+    in
+    if cond then
+      (~lb.seek (); iter (count + 1))
+    else
+      count
+  in
+  let len = iter 0 in
+  caret.str.substring caret.idx len
+
 # -----------------------------------------------------------------------------
 # Char type predicates
 
@@ -201,6 +229,9 @@ let isUidStart (chr : Char) =
 
 let isVarChar (char : Char) =
   isLidStart char || isUidStart char || isDigit char || (char == '\'') 
+
+let isCommentName (char : Char) =
+  not ("\x7f{}".mem char) && not ('\0' <= char && char <= ' ')
 
 # -----------------------------------------------------------------------------
 # Lexer
@@ -302,20 +333,34 @@ let tokenizeOp str =
       raise "Internal operator error" 
   end
 
-let rec token () =
-  match popChar () with
-  | None => EOF
-  | Some chr =>
-    if isWhite chr || chr == '\n' then token ()
-    # else if chr == '{' && tryGetChar '#' then KW_EFFECT
-    else if chr == '(' then BR_OPN
-    else if chr == ')' then BR_CLS
-    else if chr == '[' then SBR_OPN
-    else if chr == ']' then SBR_CLS
-    else if chr == '{' then CBR_OPN
-    else if chr == '}' then CBR_CLS
-    else raise "TODO"
-  end
+rec 
+  let token () =
+    match popChar () with
+    | None => EOF
+    | Some chr =>
+      if isWhite chr || chr == '\n' then token ()
+      else if chr == '{' && tryMatch "#" then
+       (let name = takeWhile isCommentName in
+        blockComment (name + "#}"))
+      else if chr == '(' then BR_OPN
+      else if chr == ')' then BR_CLS
+      else if chr == '[' then SBR_OPN
+      else if chr == ']' then SBR_CLS
+      else if chr == '{' then CBR_OPN
+      else if chr == '}' then CBR_CLS
+      else raise "TODO"
+    end
+
+  let blockComment closing =
+    if currChar () == Some '\n' then
+      (~lb.seek (); ~pt.newLine (); blockComment closing)
+    else if tryMatch closing then
+      token ()
+    else if currChar () == None then
+      raise "Unexpected EOF while parsing block comment"
+    else
+      (~lb.seek (); blockComment closing)
+end
 
 # -----------------------------------------------------------------------------
 # Public interface

@@ -89,6 +89,13 @@ method equal (t1 : Token) (t2 : Token) =
   | _, _ => False
   end
 
+method show (t : Token) =
+  match t with
+  | EOF => "EOF"
+  | CBR_CLS => "CBR_CLS"
+  | _   => "?"
+  end
+
 let unwrapToks str =
   let st = mkLexerState str in
   let rec iter st =
@@ -113,4 +120,15 @@ let () =
     
     expectEq (unwrapToks "()") [BR_OPN, BR_CLS, EOF];
     
-    expectEq (unwrapToks "\n\n\t   )  \n\n (") [BR_CLS, BR_OPN, EOF])
+    expectEq (unwrapToks "\n\n\t   )  \n\n (") [BR_CLS, BR_OPN, EOF]);
+  
+  testCase "blockComments" (fn _ =>
+    expectEqS (unwrapToks " {# #} ") [EOF];
+    
+    expectEqS (unwrapToks " {## #} ##} ") [EOF];
+    
+    expectEqS (unwrapToks " {#aaaa#} ") [];
+
+    expectEqS (unwrapToks "{#aa\naa#}") [EOF];
+
+    expectEqS (unwrapToks "{# #} {## ##} {### ###}") [EOF])
