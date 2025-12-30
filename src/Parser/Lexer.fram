@@ -166,6 +166,159 @@ parameter E_Brackets : effect
 parameter ~br : CBracketTracker E_Brackets
 
 # -----------------------------------------------------------------------------
+# High level utility functions
+
+let popChar () =
+  match ~lb.curr () with
+  | None => None
+  | Some ch =>
+    ~lb.seek ();
+    if ch == '\n' then
+      ~pt.newLine ()
+    else
+      ~pt.moveBy 1;
+    Some ch
+  end
+
+# -----------------------------------------------------------------------------
+# Char type predicates
+
+let isWhite (chr : Char) =
+  ('\x09' <= chr && chr <= '\r') || chr == ' ' || chr == '\t'
+
+let isDigit (chr : Char) =
+  ('0' <= chr && chr <= '9')
+
+let isHexDigit (chr : Char) =
+  isDigit chr || ('a' <= chr && chr <= 'f') || ('A' <= chr && chr <= 'F')
+
+let isOpChar = "<>&$?!@^+-~*%;,=|:./".mem
+
+let isLidStart (chr : Char) =
+  ('a' <= chr && chr <= 'z') || chr =='-'
+
+let isUidStart (chr : Char) =
+  ('A' <= chr && chr <= 'Z')
+
+let isVarChar (char : Char) =
+  isLidStart char || isUidStart char || isDigit char || (char == '\'') 
+
+# -----------------------------------------------------------------------------
+# Lexer
+
+let Map {module SMap} = M.make {Key = String}
+
+let keywords =
+  let kws =
+    [ ("abstr",     KW_ABSTR)
+    , ("as",        KW_AS)
+    , ("data",      KW_DATA)
+    , ("effect",    KW_EFFECT)
+    , ("else",      KW_ELSE)
+    , ("end",       KW_END)
+    , ("extern",    KW_EXTERN)
+    , ("finally",   KW_FINALLY)
+    , ("fn",        KW_FN)
+    , ("handle",    KW_HANDLE)
+    , ("handler",   KW_HANDLER)
+    , ("if",        KW_IF)
+    , ("import",    KW_IMPORT)
+    , ("in",        KW_IN)
+    , ("label",     KW_LABEL)
+    , ("let",       KW_LET)
+    , ("match",     KW_MATCH)
+    , ("method",    KW_METHOD)
+    , ("module",    KW_MODULE)
+    , ("of",        KW_OF)
+    , ("open",      KW_OPEN)
+    , ("parameter", KW_PARAMETER)
+    , ("pub",       KW_PUB)
+    , ("rec",       KW_REC)
+    , ("return",    KW_RETURN)
+    , ("section",   KW_SECTION)
+    , ("then",      KW_THEN)
+    , ("type",      KW_TYPE)
+    , ("with",      KW_WITH)
+    , ("_",         UNDERSCORE)
+    ]
+  in
+  kws.foldLeft (fn (m : SMap.T _) (kw, tok) => m.add kw tok) SMap.empty
+
+let tokenizeIdent ident =
+  match keywords.find ident with
+  | Some kw => kw
+  | None    => LID ident
+  end
+
+let operators =
+  let ops = 
+    [ ("->", ARROW)
+    , ("|",  BAR)
+    , ("=>", ARROW2)
+    , ("->>", EFF_ARROW)
+    , ("|",  BAR)
+    , (":",  COLON)
+    , (",",  COMMA)
+    , (".",  DOT)
+    , ("=",  EQ)
+    , (";;", SEMICOLON2)
+    , ("/",  SLASH)
+    , (">.", GT_DOT)
+    ]
+  in
+  ops.foldLeft (fn (m : SMap.T _) (kw, op) => m.add kw op) SMap.empty
+
+let tokenizeOp str =
+  match operators.find str with
+  | Some x => x
+  | None =>
+    let isLong = str.length >= 2 in
+    let longMatch chr = isLong && (str.get 1 == chr)
+    let fst = str.get 0 in
+    if (fst == '?' || fst == '~') && not isLong then
+      raise "Disallowed operator"
+    else if fst == ';' then
+      OP_0 str
+    else if fst == '<' && longMatch '-' then
+      OP_20 str
+    else if fst == ':' && longMatch '=' then
+      OP_20 str
+    else if fst == ',' then
+      OP_30 str
+    else if fst == '|' && longMatch '|' then
+      OP_40 str
+    else if fst == '&' && longMatch '&' then
+      OP_50 str
+    else if "!=<>|&$?".mem fst then
+      OP_60 str
+    else if "@:^".mem fst then
+      OP_70 str
+    else if "+-~".mem fst then
+      OP_80 str
+    else if fst == '*' && longMatch '*' then
+      OP_100 str
+    else if "*/%.".mem fst then
+      OP_90 str
+    else
+      raise "Internal operator error" 
+  end
+
+let rec token () =
+  match popChar () with
+  | None => EOF
+  | Some chr =>
+    if isWhite chr || chr == '\n' then token ()
+    # else if chr == '{' && tryGetChar '#' then KW_EFFECT
+    else if chr == '(' then BR_OPN
+    else if chr == ')' then BR_CLS
+    else if chr == '[' then SBR_OPN
+    else if chr == ']' then SBR_CLS
+    else if chr == '{' then CBR_OPN
+    else if chr == '}' then CBR_CLS
+    else raise "TODO"
+  end
+
+# -----------------------------------------------------------------------------
 # Public interface
 
 abstr data LexerState =
