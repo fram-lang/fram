@@ -1,0 +1,195 @@
+import open Tokens
+import Map as M
+import List as L
+import open Testing
+import String as S
+
+# -----------------------------------------------------------------------------
+# Possible additions to stdlib
+method mem (str : String) (chr : Char) =
+  match str.findChar chr with
+  | Some _ => True
+  | None   => False
+  end
+
+method startsWith {?pos : Int} (str : String) (prefix : String) =
+  if str.length < prefix.length then
+    False
+  else
+   (let rec iter i =
+      if i >= prefix.length then
+        True
+      else if (prefix.get i != str.get i) then
+        False
+      else
+        iter (i + 1)
+    in
+    iter (pos.unwrapOr 0))
+
+# -----------------------------------------------------------------------------
+# Fatal errors
+
+data Fatal E = {raise : {X} -> String ->[E] X}
+
+parameter E_Fatal : effect
+parameter ~err : Fatal E_Fatal
+
+let fatalH =
+  handler Fatal
+    { effect raise msg = Err msg }
+  return x => Ok x
+  end
+
+let raise str = ~err.raise str
+
+# -----------------------------------------------------------------------------
+# Reading buffer
+
+data Caret = {idx : Int, str : String}
+let mkCaret str = Caret {idx = 0, str}
+
+method moveBy (Caret {idx, str}) len = Caret {idx = idx + len, str}
+
+method getChar (Caret {idx, str}) =
+  if idx < str.length then
+    Some (str.get idx)
+  else if idx == str.length then
+    None 
+  else
+    ~err.raise "getChar - out of position"
+
+data LexBuf E =
+  { seek     : Unit   ->[E] Unit
+  , curr     : Unit   ->[E] Option Char
+  , tryMatch : String ->[E] Bool 
+  }
+
+let lexBufH caret =
+  handler LexBuf
+    { effect seek () / r = fn (c : Caret) =>
+      r () (c.moveBy 1)
+    , effect curr () / r = fn (c : Caret) =>
+      r c.getChar c
+    , effect tryMatch pattern / r = fn (c : Caret) =>
+      if c.str.startsWith {pos=c.idx} pattern then
+       (let c = c.moveBy (pattern.length) in
+        r True c)
+      else
+        r False c
+      }
+  return x => fn c => (x, c)
+  finally c => c caret
+  end
+
+parameter E_LexBuf
+parameter ~lb : LexBuf E_LexBuf
+
+# -----------------------------------------------------------------------------
+# Position tracker
+
+data Pos = {line : Int, col : Int}
+
+method moveBy (Pos {line, col}) len = Pos {line, col = col + len}
+method newLine (Pos {line}) = Pos {line = line + 1, col = 0}
+
+data PosTracker E =
+  { moveBy : Int ->[E] Unit
+  , newLine : Unit ->[E] Unit
+  }
+
+let posTrackerH pos =
+  handler PosTracker
+    { effect moveBy len / r = fn (pos : Pos) =>
+      r () (pos.moveBy len)
+    , effect newLine () / r = fn (pos : Pos) =>
+      r () (pos.newLine)
+    }
+  return x => fn p => (x, p)
+  finally c => c pos
+  end
+
+parameter E_PosTracker
+parameter ~pt : PosTracker E_PosTracker
+
+# -----------------------------------------------------------------------------
+# Bracket Stack
+
+
+data BracketType =
+  | BT_Regular
+  | BT_Interp
+
+data CBracketTracker E =
+  { push : BracketType ->[E] Unit
+  , pop  : Unit        ->[E] BracketType
+  }
+
+data BracketStack =
+  { openBrackets : Int
+  , bracketStack : List Int
+  }
+
+method pushRegular (BracketStack {openBrackets, bracketStack}) =
+  BracketStack {openBrackets = openBrackets + 1, bracketStack}
+
+method pushInterp (BracketStack {openBrackets, bracketStack}) =
+  BracketStack {openBrackets = 0, bracketStack = openBrackets :: bracketStack}
+
+method popBracket (BracketStack {openBrackets, bracketStack}) =
+  if openBrackets == 0 then
+    match bracketStack with
+    | openBrackets :: bracketStack =>
+      (BT_Interp, BracketStack {openBrackets, bracketStack})
+    | _ => raise "Bracket mismatch"
+    end
+  else
+    (BT_Regular, BracketStack {openBrackets = openBrackets - 1, bracketStack})
+
+let emptyStack = BracketStack {openBrackets = 0, bracketStack = []}
+
+let cbracketTrackerH stack = 
+  handler CBracketTracker
+    { effect push ctype / r = fn (stack : BracketStack) =>
+      match ctype with
+      | BT_Regular => r () stack.pushRegular
+      | BT_Interp  => r () stack.pushInterp
+      end
+    , effect pop () / r = fn (stack : BracketStack) =>
+      let (ty, stack) = stack.popBracket in
+      r ty stack
+    }
+  return x => fn s => (x, s)
+  finally c => c stack
+  end
+
+parameter E_Brackets : effect
+parameter ~br : CBracketTracker E_Brackets
+
+# -----------------------------------------------------------------------------
+# Public interface
+
+abstr data LexerState =
+  { caret : Caret
+  , pos   : Pos
+  , stack : BracketStack
+  }
+
+pub let mkLexerState str = LexerState
+  { caret = Caret {str, idx = 0}
+  , pos   = Pos {line = 0, col = 0}
+  , stack = emptyStack
+  }
+
+let getTok (st : LexerState) =
+  let res = 
+    handle ~err / E_Fatal  with fatalH in
+    handle ~lb  / E_LexBuf with lexBufH st.caret in
+    handle ~pt  / E_PosTracker with posTrackerH st.pos in
+    handle ~br  / E_Brackets with cbracketTrackerH st.stack in
+      ()
+  in
+  match res with
+  | Err s => Err s
+  | Ok (((tok, stack), pos), caret) =>
+    Ok (tok, LexerState {stack, pos, caret})
+  end

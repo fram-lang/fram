@@ -1,0 +1,90 @@
+{# This file is part of Fram, released under MIT license.
+ # See LICENSE for details.
+ #}
+
+## # Tokens
+
+pub data Token =
+  # Identifiers
+  | LID  of String
+  | UID  of String 
+  | TLID of String
+  | QLID of String
+  
+  # Operators
+  | OP_0   of String
+  | OP_20  of String
+  | OP_30  of String
+  | OP_40  of String
+  | OP_50  of String
+  | OP_60  of String
+  | OP_70  of String
+  | OP_80  of String
+  | OP_90  of String
+  | OP_100 of String
+
+  # Data
+  | NUM   of Int
+  | NUM64 of Int64
+  | STR   of String
+  | CSTR  of String
+  | BSTR  of String
+  | ESTR  of String
+  | CHR   of Char
+
+  # Brackets
+  | BR_OPN
+  | BR_CLS
+  | SBR_OPN
+  | SBR_CLS
+  | CBR_OPN
+  | CBR_CLS
+  | ATTR_OPEN
+
+  # Special symbols
+  | ARROW
+  | EFF_ARROW
+  | ARROW2
+  | BAR
+  | COLON
+  | COMMA
+  | DOT
+  | EQ
+  | SEMICOLON2
+  | SLASH
+  | GT_DOT
+
+  # keywords
+  | KW_ABSTR 
+  | KW_AS 
+  | KW_DATA 
+  | KW_EFFECT 
+  | KW_ELSE 
+  | KW_END 
+  | KW_EXTERN
+  | KW_FINALLY 
+  | KW_FN 
+  | KW_HANDLE 
+  | KW_HANDLER 
+  | KW_IF 
+  | KW_IMPORT
+  | KW_IN 
+  | KW_LABEL 
+  | KW_LET 
+  | KW_MATCH 
+  | KW_METHOD 
+  | KW_MODULE 
+  | KW_OF 
+  | KW_OPEN
+  | KW_PARAMETER 
+  | KW_PUB
+  | KW_REC
+  | KW_RETURN 
+  | KW_SECTION 
+  | KW_THEN 
+  | KW_TYPE
+  | KW_WITH
+  | UNDERSCORE
+  | EOF
+
+pub data Tok = {token : Token, pos : Int}
