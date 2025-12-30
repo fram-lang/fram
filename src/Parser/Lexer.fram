@@ -1,7 +1,6 @@
 import open Tokens
 import Map as M
 import List as L
-import open Testing
 import String as S
 
 # -----------------------------------------------------------------------------
@@ -333,13 +332,13 @@ pub let mkLexerState str = LexerState
   , stack = emptyStack
   }
 
-let getTok (st : LexerState) =
+pub let getTok (st : LexerState) =
   let res = 
     handle ~err / E_Fatal  with fatalH in
     handle ~lb  / E_LexBuf with lexBufH st.caret in
     handle ~pt  / E_PosTracker with posTrackerH st.pos in
     handle ~br  / E_Brackets with cbracketTrackerH st.stack in
-      ()
+      token ()
   in
   match res with
   | Err s => Err s

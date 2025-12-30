@@ -1,0 +1,116 @@
+import open Testing
+import open Parser/Tokens
+import open Parser/Lexer
+
+method equal (t1 : Token) (t2 : Token) =
+  match (t1, t2) with
+  # Identifiers
+  | LID  t1, LID  t2 => t1 == t2
+  | UID  t1, UID  t2 => t1 == t2
+  | TLID t1, TLID t2 => t1 == t2
+  | QLID t1, QLID t2 => t1 == t2
+  
+  # Operators
+  | OP_0   o1, OP_0  o2 => o1 == o2 
+  | OP_20  o1, OP_20 o2 => o1 == o2 
+  | OP_30  o1, OP_30 o2 => o1 == o2 
+  | OP_40  o1, OP_40 o2 => o1 == o2 
+  | OP_50  o1, OP_50 o2 => o1 == o2 
+  | OP_60  o1, OP_60 o2 => o1 == o2 
+  | OP_70  o1, OP_70 o2 => o1 == o2 
+  | OP_80  o1, OP_80 o2 => o1 == o2 
+  | OP_90  o1, OP_90 o2 => o1 == o2 
+  | OP_100 o1, OP_100 o2 => o1 == o2 
+
+  # Data
+  | NUM   v1, NUM   v2 => v1 == v2
+  | NUM64 v1, NUM64 v2 => v1 == v2
+  | STR   v1, STR   v2 => v1 == v2
+  | CSTR  v1, CSTR  v2 => v1 == v2
+  | BSTR  v1, BSTR  v2 => v1 == v2
+  | ESTR  v1, ESTR  v2 => v1 == v2
+  | CHR   v1, CHR   v2 => v1 == v2
+
+  # Brackets
+  | BR_OPN, BR_OPN => True
+  | BR_CLS, BR_CLS => True
+  | SBR_OPN, SBR_OPN => True
+  | SBR_CLS, SBR_CLS => True
+  | CBR_OPN, CBR_OPN => True
+  | CBR_CLS, CBR_CLS => True
+  | ATTR_OPEN, ATTR_OPEN => True
+
+  # Special symbols
+  | ARROW, ARROW => True
+  | EFF_ARROW, EFF_ARROW => True
+  | ARROW2, ARROW2 => True
+  | BAR, BAR => True
+  | COLON, COLON => True
+  | COMMA, COMMA => True
+  | DOT, DOT => True
+  | EQ, EQ => True
+  | SEMICOLON2, SEMICOLON2 => True
+  | SLASH, SLASH => True
+  | GT_DOT, GT_DOT => True
+
+  # keywords
+  | KW_ABSTR , KW_ABSTR => True
+  | KW_AS , KW_AS => True
+  | KW_DATA , KW_DATA => True
+  | KW_EFFECT , KW_EFFECT => True
+  | KW_ELSE , KW_ELSE => True
+  | KW_END , KW_END => True
+  | KW_EXTERN, KW_EXTERN=> True
+  | KW_FINALLY , KW_FINALLY => True
+  | KW_FN , KW_FN => True
+  | KW_HANDLE , KW_HANDLE => True
+  | KW_HANDLER , KW_HANDLER => True
+  | KW_IF , KW_IF => True
+  | KW_IMPORT, KW_IMPORT=> True
+  | KW_IN , KW_IN => True
+  | KW_LABEL , KW_LABEL => True
+  | KW_LET , KW_LET => True
+  | KW_MATCH , KW_MATCH => True
+  | KW_METHOD , KW_METHOD => True
+  | KW_MODULE , KW_MODULE => True
+  | KW_OF , KW_OF => True
+  | KW_OPEN, KW_OPEN=> True
+  | KW_PARAMETER , KW_PARAMETER => True
+  | KW_PUB, KW_PUB=> True
+  | KW_REC, KW_REC=> True
+  | KW_RETURN , KW_RETURN => True
+  | KW_SECTION , KW_SECTION => True
+  | KW_THEN , KW_THEN => True
+  | KW_TYPE, KW_TYPE=> True
+  | KW_WITH, KW_WITH=> True
+  | UNDERSCORE, UNDERSCORE=> True
+  | EOF, EOF=> True
+  
+  | _, _ => False
+  end
+
+let unwrapToks str =
+  let st = mkLexerState str in
+  let rec iter st =
+    match getTok st with
+    | Err _ => [] # No EOF!
+    | Ok (EOF, _) => [EOF]
+    | Ok (tok, st) => tok :: iter st
+    end
+  in
+  iter st
+
+let () =
+  testCase "empty" (fn _ =>
+    expectEq (unwrapToks "") [EOF];
+    
+    expectEq (unwrapToks "  \n\n \t \t  \r ") [EOF]);
+
+  testCase "parenthesis" (fn _ =>
+    expectEq (unwrapToks "(") [BR_OPN, EOF];
+    
+    expectEq (unwrapToks ")") [BR_CLS, EOF];
+    
+    expectEq (unwrapToks "()") [BR_OPN, BR_CLS, EOF];
+    
+    expectEq (unwrapToks "\n\n\t   )  \n\n (") [BR_CLS, BR_OPN, EOF])
