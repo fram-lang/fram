@@ -131,4 +131,9 @@ let () =
 
     expectEqS (unwrapToks "{#aa\naa#}") [EOF];
 
-    expectEqS (unwrapToks "{# #} {## ##} {### ###}") [EOF])
+    expectEqS (unwrapToks "{# #} {## ##} {### ###}") [EOF]);
+
+  testCase "operators" (fn _ =>
+    expectEqS
+      (unwrapToks " + - * ^ && ||||| ")
+      [OP_80 "+", OP_80 "-", OP_90 "*", OP_70 "^", OP_50 "&&", OP_40 "|||||", EOF])
