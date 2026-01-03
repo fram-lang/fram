@@ -98,14 +98,15 @@ method show (t : Token) =
   | BSTR s => "BSTR \{s.show}"
   | CSTR s => "CSTR \{s.show}"
   | ESTR s => "ESTR \{s.show}"
+  | CHR c => "CHR \{c.show}"
   | _   => "?"
   end
 
-let unwrapToks str =
+let unwrapToks {~testLogger} str =
   let st = mkLexerState str in
   let rec iter st =
     match getTok st with
-    | Err _ => [] # No EOF!
+    | Err e => log e; [] # No EOF!
     | Ok (EOF, _) => [EOF]
     | Ok (tok, st) => tok :: iter st
     end
@@ -160,5 +161,19 @@ let () =
     expectEqS
       (unwrapToks " \"interp=\\{ {} }other=\\{++}\"  ")
       [BSTR "interp=", CBR_OPN, CBR_CLS, CSTR "other=", OP_80 "++", ESTR "", EOF]);
-    
+  
+  testCase "escapes" (fn _ =>
+    expectEqS
+      (unwrapToks " \"\\a \\n \\t \\xFF \\xbC\"  ")
+      [STR "\a \n \t \xff \xbc", EOF]);
+
+  testCase "chars" (fn _ =>
+    expectEqS
+      (unwrapToks " \'\\n\' ")
+      [CHR '\n', EOF];
+
+    expectEqS
+      (unwrapToks " \'a\' \'\\n\' \' \' \'\\xbc\' ")
+      [CHR 'a', CHR '\n', CHR ' ', CHR '\xBC', EOF]);
+
     ()
