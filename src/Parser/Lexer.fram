@@ -351,18 +351,42 @@ rec
       else if isOpChar chr then
        (let op = chr.toString + takeWhile isOpChar in
         tokenizeOp op)
+      else if chr == '"' then
+        stringToken True []
       else raise "TODO"
     end
 
   let blockComment closing =
     if currChar () == Some '\n' then
-      (~lb.seek (); ~pt.newLine (); blockComment closing)
+      (~lb.seek ();
+       ~pt.newLine ();
+       blockComment closing)
     else if tryMatch closing then
       token ()
     else if currChar () == None then
       raise "Unexpected EOF while parsing block comment"
     else
       (~lb.seek (); blockComment closing)
+  
+  let stringToken isOpening buffer =
+    match popChar () with
+    | None => raise "Unclosed string token"
+    | Some chr =>
+      if chr == '\n' then
+        (~pt.newLine ();
+         stringToken isOpening ('\n' :: buffer))
+      else if chr == '"' then
+       (let str = charListToStr buffer.rev in
+        if isOpening then STR str else ESTR str)
+      else if chr == '\\' && tryMatch "{" then
+       (~br.push BT_Interp;
+        let str = charListToStr buffer.rev in
+        if isOpening then BSTR str else CSTR str)
+      else if chr == '\\' then
+        raise "TODO - string escape"
+      else
+         stringToken isOpening (chr :: buffer)
+    end
 end
 
 # -----------------------------------------------------------------------------

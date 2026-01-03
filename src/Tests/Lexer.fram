@@ -93,6 +93,7 @@ method show (t : Token) =
   match t with
   | EOF => "EOF"
   | CBR_CLS => "CBR_CLS"
+  | STR s => "STR \{s.show}"
   | _   => "?"
   end
 
@@ -136,4 +137,9 @@ let () =
   testCase "operators" (fn _ =>
     expectEqS
       (unwrapToks " + - * ^ && ||||| ")
-      [OP_80 "+", OP_80 "-", OP_90 "*", OP_70 "^", OP_50 "&&", OP_40 "|||||", EOF])
+      [OP_80 "+", OP_80 "-", OP_90 "*", OP_70 "^", OP_50 "&&", OP_40 "|||||", EOF]);
+  
+  testCase "basic strings" (fn _ =>
+    expectEqS
+      (unwrapToks " \"my string\" \"foo\nbar\" ")
+      [STR "my string", STR "foo\nbar", EOF])
