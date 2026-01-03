@@ -92,8 +92,12 @@ method equal (t1 : Token) (t2 : Token) =
 method show (t : Token) =
   match t with
   | EOF => "EOF"
+  | CBR_OPN => "CBR_OPN"
   | CBR_CLS => "CBR_CLS"
   | STR s => "STR \{s.show}"
+  | BSTR s => "BSTR \{s.show}"
+  | CSTR s => "CSTR \{s.show}"
+  | ESTR s => "ESTR \{s.show}"
   | _   => "?"
   end
 
@@ -142,4 +146,19 @@ let () =
   testCase "basic strings" (fn _ =>
     expectEqS
       (unwrapToks " \"my string\" \"foo\nbar\" ")
-      [STR "my string", STR "foo\nbar", EOF])
+      [STR "my string", STR "foo\nbar", EOF]);
+
+  testCase "interpolation" (fn _ =>
+    expectEqS
+      (unwrapToks " {} ")
+      [CBR_OPN, CBR_CLS, EOF];
+    
+    expectEqS
+      (unwrapToks "{}}")
+      [CBR_OPN, CBR_CLS]; # FAIL
+    
+    expectEqS
+      (unwrapToks " \"interp=\\{ {} }other=\\{++}\"  ")
+      [BSTR "interp=", CBR_OPN, CBR_CLS, CSTR "other=", OP_80 "++", ESTR "", EOF]);
+    
+    ()

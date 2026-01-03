@@ -346,8 +346,17 @@ rec
       else if chr == ')' then BR_CLS
       else if chr == '[' then SBR_OPN
       else if chr == ']' then SBR_CLS
-      else if chr == '{' then CBR_OPN
-      else if chr == '}' then CBR_CLS
+      else if chr == '{' then
+       (~br.push BT_Regular;
+        CBR_OPN)
+      else if chr == '@' && tryMatch "{" then
+       (~br.push BT_Regular;
+        ATTR_OPEN)
+      else if chr == '}' then
+       (match ~br.pop () with
+        | BT_Regular => CBR_CLS
+        | BT_Interp  => stringToken False []
+        end)
       else if isOpChar chr then
        (let op = chr.toString + takeWhile isOpChar in
         tokenizeOp op)
