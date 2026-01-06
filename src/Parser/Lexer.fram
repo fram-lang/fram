@@ -250,6 +250,24 @@ let parseHexDigit (dgt : Char) =
   else
     raise "Invalid hexadecimal digit"
 
+let parseDecDigit (dgt : Char) =
+  if '0' <= dgt && dgt <= '9' then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid decimal digit"
+
+let parseOctDigit (dgt : Char) =
+  if '0' <= dgt && dgt <= '7' then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid octal digit"
+
+let parseBinDigit (dgt : Char) =
+  if '0' == dgt || '1' == dgt then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid binary digit"
+
 # -----------------------------------------------------------------------------
 # Lexer
 
@@ -350,6 +368,54 @@ let tokenizeOp str =
       raise "Internal operator error" 
   end
 
+let readNum (num : String) (base : Int) (parser : Char ->[E_Fatal] Int) =
+  if num.length == 0 then
+    raise "Invalid number";
+  let rec iter (i : Int) (acc : Int) =
+    if i >= num.length then
+      NUM acc
+    else
+     (let digit = num.get i in
+      let acc = acc * base + parser digit in
+      if acc < 0 then
+        raise "Number is too big!"
+      else
+        iter (i + 1) acc)
+  in
+  iter 0 0
+
+let readNum64 (num : String) (base : Int) (parser : Char ->[E_Fatal] Int) =
+  let base = base.toInt64 in
+  if num.length == 0 then
+    raise "Invalid number";
+  let rec iter (i : Int) (acc : Int64) =
+    if i >= num.length then
+      NUM64 acc
+    else
+     (let digit = num.get i in
+      let acc = acc * base + (parser digit).toInt64 in
+      if acc < 0L then
+        raise "Number is too big!"
+      else
+        iter (i + 1) acc)
+  in
+  iter 0 0L
+
+let tokenizeNumber (num : String) =
+  let (base, parser) =
+    if num.contains "0b" then (2, parseBinDigit)
+    else if num.contains "0o" then (8, parseOctDigit)
+    else if num.contains "0x" then (16, parseHexDigit)
+    else (10, parseDecDigit)
+  let num = if base == 10 then num else num.substring 2 (num.length - 2)
+  let (num, reader) =
+    if num.get (num.length - 1) == 'L' then
+      (num.substring 0 (num.length - 1), readNum64)
+    else
+      (num, readNum)
+  in
+  reader num base parser
+
 let parseEscape () =
   let c = forcePopChar () in
   if "\"\'\\".mem c then
@@ -398,6 +464,9 @@ rec
       else if isOpChar chr then
        (let op = chr.toString + takeWhile isOpChar in
         tokenizeOp op)
+      else if isDigit chr then
+       (let num = chr.toString + takeWhile isVarChar in
+        tokenizeNumber num)
       else if chr == '\'' then
        (let c = forcePopChar () in
         let c = if c != '\\' then c else parseEscape () in

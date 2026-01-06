@@ -176,4 +176,15 @@ let () =
       (unwrapToks " \'a\' \'\\n\' \' \' \'\\xbc\' ")
       [CHR 'a', CHR '\n', CHR ' ', CHR '\xBC', EOF]);
 
+  testCase "numbers" (fn _ =>
+    expectEqS
+      (unwrapToks "42 0xFf 0o75 0b1010")
+      [NUM 42, NUM 255, NUM 61, NUM 10, EOF];
+    
+    expectEqS
+      (unwrapToks "42L 0xFFL 0o75L 0b1010L")
+      [NUM64 42L, NUM64 255L, NUM64 61L, NUM64 10L, EOF];
+    
+    expectEqS (unwrapToks "1000000000000000000000") []);
+
     ()
