@@ -187,4 +187,9 @@ let () =
     
     expectEqS (unwrapToks "1000000000000000000000") []);
 
+  testCase "identifiers" (fn _ =>
+    expectEqS
+      (unwrapToks "foo Bar ~baz ?qux")
+      [LID "foo", UID "Bar", TLID "baz", QLID "qux", EOF]);
+
     ()

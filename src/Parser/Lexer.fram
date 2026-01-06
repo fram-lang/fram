@@ -30,6 +30,12 @@ method contains {?pos : Int} (str : String) (prefix : String) =
     in
     iter startPos 0)
 
+method andmap opt f =
+  match opt with
+  | None   => False
+  | Some x => f x
+  end
+
 # -----------------------------------------------------------------------------
 # Fatal errors
 
@@ -461,9 +467,21 @@ rec
         | BT_Regular => CBR_CLS
         | BT_Interp  => stringToken False []
         end)
-      else if isOpChar chr then
+      # TODO Find better solution
+      else if ("?~".mem chr && (currChar ()).andmap isOpChar)
+           || (not ("?~".mem chr) && isOpChar chr) then
        (let op = chr.toString + takeWhile isOpChar in
         tokenizeOp op)
+      else if isLidStart chr then
+       (let tok = chr.toString + takeWhile isVarChar in
+        tokenizeIdent tok)
+      else if isUidStart chr then
+       (let uid = chr.toString + takeWhile isVarChar in
+        UID uid)
+      else if chr == '~' && (currChar ()).andmap isVarChar then
+        (TLID (takeWhile isVarChar))
+      else if chr == '?' && (currChar ()).andmap isVarChar then
+        (QLID (takeWhile isVarChar))
       else if isDigit chr then
        (let num = chr.toString + takeWhile isVarChar in
         tokenizeNumber num)
