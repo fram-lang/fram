@@ -87,4 +87,16 @@ pub data Token =
   | UNDERSCORE
   | EOF
 
-pub data Tok = {token : Token, pos : Int}
+pub data Pos =
+  { idx  : Int
+  , line : Int
+  , col  : Int
+  }
+
+pub data PosSpan =
+  { file  : String
+  , first : Pos
+  , last  : Pos
+  }
+
+pub data Tok = {token : Token, pos : PosSpan}

@@ -55,12 +55,17 @@ let raise str = ~err.raise str
 # -----------------------------------------------------------------------------
 # Reading buffer
 
-data Caret = {idx : Int, str : String}
-let mkCaret str = Caret {idx = 0, str}
+type CaretPos = Pos
+data Caret = {pos : CaretPos, str : String}
+let mkCaret str = Caret {pos = Pos {idx = 0, line = 0, col = 0}, str}
 
-method moveBy (Caret {idx, str}) len = Caret {idx = idx + len, str}
+method moveBy (Caret {pos = Pos {idx, line, col}, str}) len =
+  Caret {pos = Pos {idx = idx + len, line, col = col + len}, str}
 
-method getChar (Caret {idx, str}) =
+method moveNewLine (Caret {pos = Pos {idx, line, col}, str}) =
+  Caret {pos = Pos {idx = idx + 1, line = line + 1, col = 0}, str}
+
+method getChar (Caret {pos = Pos {idx}, str}) =
   if idx < str.length then
     Some (str.get idx)
   else if idx == str.length then
@@ -82,7 +87,7 @@ let lexBufH caret =
     , effect curr () / r = fn (c : Caret) =>
       r c.getChar c
     , effect tryMatch pattern / r = fn (c : Caret) =>
-      if c.str.contains {pos=c.idx} pattern then
+      if c.str.contains {pos=c.pos.idx} pattern then
        (let c = c.moveBy (pattern.length) in
         r True c)
       else
@@ -103,22 +108,22 @@ let tryMatch pttrn = ~lb.tryMatch pttrn
 # -----------------------------------------------------------------------------
 # Position tracker
 
-data Pos = {line : Int, col : Int}
-
-method moveBy (Pos {line, col}) len = Pos {line, col = col + len}
-method newLine (Pos {line}) = Pos {line = line + 1, col = 0}
+data LexStart = {pos : Pos, file : String}
 
 data PosTracker E =
-  { moveBy : Int ->[E] Unit
-  , newLine : Unit ->[E] Unit
+  { setStart    : Pos    ->[E] Unit
+  , getStart    : Unit   ->[E] Pos
+  , setFilename : String ->[E] Unit
   }
 
 let posTrackerH pos =
   handler PosTracker
-    { effect moveBy len / r = fn (pos : Pos) =>
-      r () (pos.moveBy len)
-    , effect newLine () / r = fn (pos : Pos) =>
-      r () (pos.newLine)
+    { effect setStart pos / r = fn (lex : LexStart) =>
+      r () (LexStart {pos, file = lex.file})
+    , effect getStart ()  / r = fn (lex : LexStart) =>
+      r lex.pos lex
+    , effect setFilename file / r = fn (lex : LexStart) =>
+      r () (LexStart {pos = lex.pos, file})
     }
   return x => fn p => (x, p)
   finally c => c pos
@@ -129,7 +134,6 @@ parameter ~pt : PosTracker E_PosTracker
 
 # -----------------------------------------------------------------------------
 # Bracket Stack
-
 
 data BracketType =
   | BT_Regular
@@ -189,10 +193,6 @@ let popChar () =
   | None => None
   | Some ch =>
     ~lb.seek ();
-    if ch == '\n' then
-      ~pt.newLine ()
-    else
-      ~pt.moveBy 1;
     Some ch
   end
 
@@ -215,7 +215,7 @@ let takeWhile pred =
       count
   in
   let len = iter 0 in
-  caret.str.substring caret.idx len
+  caret.str.substring caret.pos.idx len
 
 # -----------------------------------------------------------------------------
 # Char type predicates
@@ -500,7 +500,6 @@ rec
   let blockComment closing =
     if currChar () == Some '\n' then
       (~lb.seek ();
-       ~pt.newLine ();
        blockComment closing)
     else if tryMatch closing then
       token ()
@@ -514,8 +513,7 @@ rec
     | None => raise "Unclosed string token"
     | Some chr =>
       if chr == '\n' then
-        (~pt.newLine ();
-         stringToken isOpening ('\n' :: buffer))
+         stringToken isOpening ('\n' :: buffer)
       else if chr == '"' then
        (let str = charListToStr buffer.rev in
         if isOpening then STR str else ESTR str)
@@ -536,26 +534,28 @@ end
 
 abstr data LexerState =
   { caret : Caret
-  , pos   : Pos
+  , start : LexStart
   , stack : BracketStack
   }
 
-pub let mkLexerState str = LexerState
-  { caret = Caret {str, idx = 0}
-  , pos   = Pos {line = 0, col = 0}
-  , stack = emptyStack
-  }
+pub let mkLexerState str file =
+  let pos = Pos {idx = 0, line = 0, col = 0} in
+  LexerState
+    { caret = Caret {str, pos}
+    , start = LexStart {file, pos}
+    , stack = emptyStack
+    }
 
-pub let getTok (st : LexerState) =
+pub let getTok (LexerState {caret, start, stack}) =
   let res = 
     handle ~err / E_Fatal  with fatalH in
-    handle ~lb  / E_LexBuf with lexBufH st.caret in
-    handle ~pt  / E_PosTracker with posTrackerH st.pos in
-    handle ~br  / E_Brackets with cbracketTrackerH st.stack in
+    handle ~lb  / E_LexBuf with lexBufH caret in
+    handle ~pt  / E_PosTracker with posTrackerH (LexStart {pos = caret.pos, file = start.file}) in
+    handle ~br  / E_Brackets with cbracketTrackerH stack in
       token ()
   in
   match res with
   | Err s => Err s
-  | Ok (((tok, stack), pos), caret) =>
-    Ok (tok, LexerState {stack, pos, caret})
+  | Ok (((tok, stack), start), caret) =>
+    Ok (tok, LexerState {stack, start, caret})
   end

@@ -103,7 +103,7 @@ method show (t : Token) =
   end
 
 let unwrapToks {~testLogger} str =
-  let st = mkLexerState str in
+  let st = mkLexerState str "test" in
   let rec iter st =
     match getTok st with
     | Err e => log e; [] # No EOF!
