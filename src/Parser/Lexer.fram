@@ -83,7 +83,7 @@ data LexBuf E =
 let lexBufH caret =
   handler LexBuf
     { effect seek () / r = fn (c : Caret) =>
-      r () (c.moveBy 1)
+      r () (if c.getChar == Some '\n' then c.moveNewLine else c.moveBy 1)
     , effect curr () / r = fn (c : Caret) =>
       r c.getChar c
     , effect tryMatch pattern / r = fn (c : Caret) =>
@@ -550,12 +550,17 @@ pub let getTok (LexerState {caret, start, stack}) =
   let res = 
     handle ~err / E_Fatal  with fatalH in
     handle ~lb  / E_LexBuf with lexBufH caret in
-    handle ~pt  / E_PosTracker with posTrackerH (LexStart {pos = caret.pos, file = start.file}) in
+    handle ~pt  / E_PosTracker with posTrackerH
+      (LexStart {pos = caret.pos, file = start.file}) in
     handle ~br  / E_Brackets with cbracketTrackerH stack in
       token ()
   in
   match res with
   | Err s => Err s
-  | Ok (((tok, stack), start), caret) =>
-    Ok (tok, LexerState {stack, start, caret})
+  | Ok (((token, stack), start), caret) =>
+    Ok ( Tok { token
+             , pos = PosSpan { first = start.pos
+                             , last = caret.pos
+                             , file = start.file}}
+       , LexerState {stack, start, caret})
   end

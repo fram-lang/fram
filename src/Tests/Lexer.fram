@@ -1,6 +1,7 @@
 import open Testing
 import open Parser/Tokens
 import open Parser/Lexer
+import List
 
 method equal (t1 : Token) (t2 : Token) =
   match (t1, t2) with
@@ -102,16 +103,24 @@ method show (t : Token) =
   | _   => "?"
   end
 
-let unwrapToks {~testLogger} str =
+let unwrapToksWithPos str =
   let st = mkLexerState str "test" in
   let rec iter st =
     match getTok st with
-    | Err e => log e; [] # No EOF!
-    | Ok (EOF, _) => [EOF]
-    | Ok (tok, st) => tok :: iter st
+    | Err e => [] # No EOF!
+    | Ok (tok, st) =>
+      tok ::
+        match tok with
+        | Tok {token = EOF} => []
+        | _ => iter st
+        end
     end
   in
   iter st
+
+# This annotation speeds up tests massively!
+let (unwrapToks : String ->[] List Token) = fn str =>
+  List.map (fn (t : Tok) => t.token) (unwrapToksWithPos str)
 
 let () =
   testCase "empty" (fn _ =>
@@ -193,3 +202,39 @@ let () =
       [LID "foo", UID "Bar", TLID "baz", QLID "qux", EOF]);
 
     ()
+
+
+let largeCode = "
+import open /List
+
+let foo = bar baz (-0L) in
+  \"my code \\{ LT \\}\"
+"
+
+data TokMatch = TokMatch of Token, Int, Int, Int, Int
+
+method equal (tok : Tok) ((TokMatch t ls cs le ce)) =
+  tok.token == t
+  && tok.pos.first.line == ls
+  && tok.pos.first.col  == cs
+  && tok.pos.last.line  == le
+  && tok.pos.last.col   == ce
+
+let _ = testCase "positions" (fn _ =>
+  let toks = unwrapToksWithPos largeCode in
+  assertDoesNotCallOnError (fn _ =>
+    assertEq
+      (toks.nthErr 0)
+      (TokMatch KW_IMPORT 0 0 1 6);
+    
+    assertEq
+      (toks.nthErr 1)
+      (TokMatch KW_OPEN 1 6 1 11);
+    
+    assertEq
+      (toks.nthErr 2)
+      (TokMatch SLASH 1 11 1 13);
+    
+    assertEq
+      (toks.nthErr 3)
+      (TokMatch (UID "List") 1 13 1 17)))
