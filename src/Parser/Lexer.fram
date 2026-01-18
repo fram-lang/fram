@@ -454,6 +454,8 @@ rec
     | None => EOF
     | Some chr =>
       if isWhite chr || chr == '\n' then token ()
+      else if chr == '#' then
+        singleComment ()
       else if chr == '{' && tryMatch "#" then
        (let name = takeWhile isCommentName in
         blockComment (name + "#}"))
@@ -513,6 +515,14 @@ rec
     else
       (~lb.seek (); blockComment closing)
   
+  let singleComment () =
+    if currChar () == None then # EOF
+      token ()
+    else if currChar () == Some '\n' then
+      (let _ = popChar () in token ())
+    else
+      (let _ = popChar () in singleComment ())
+
   let stringToken isOpening buffer =
     match popChar () with
     | None => raise "Unclosed string token"

@@ -209,6 +209,15 @@ let () =
     expectEqS
       (unwrapToks "foo Bar ~baz ?qux")
       [LID "foo", UID "Bar", TLID "baz", QLID "qux", EOF]);
+  
+  testCase "single line comments" (fn _ =>
+    expectEqS
+      (unwrapToks "#asdasdas")
+      [EOF];
+    
+    expectEqS
+      (unwrapToks "#anycomment\n10")
+      [NUM 10, EOF]);
 
     ()
 
