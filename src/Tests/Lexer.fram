@@ -1,0 +1,316 @@
+import open Testing
+import open Parser/Tokens
+import open Parser/Lexer
+import List
+
+method equal (t1 : Token) (t2 : Token) =
+  match (t1, t2) with
+  # Identifiers
+  | LID  t1, LID  t2 => t1 == t2
+  | UID  t1, UID  t2 => t1 == t2
+  | TLID t1, TLID t2 => t1 == t2
+  | QLID t1, QLID t2 => t1 == t2
+  
+  # Operators
+  | OP_0   o1, OP_0  o2 => o1 == o2 
+  | OP_20  o1, OP_20 o2 => o1 == o2 
+  | OP_30  o1, OP_30 o2 => o1 == o2 
+  | OP_40  o1, OP_40 o2 => o1 == o2 
+  | OP_50  o1, OP_50 o2 => o1 == o2 
+  | OP_60  o1, OP_60 o2 => o1 == o2 
+  | OP_70  o1, OP_70 o2 => o1 == o2 
+  | OP_80  o1, OP_80 o2 => o1 == o2 
+  | OP_90  o1, OP_90 o2 => o1 == o2 
+  | OP_100 o1, OP_100 o2 => o1 == o2 
+
+  # Data
+  | NUM   v1, NUM   v2 => v1 == v2
+  | NUM64 v1, NUM64 v2 => v1 == v2
+  | STR   v1, STR   v2 => v1 == v2
+  | CSTR  v1, CSTR  v2 => v1 == v2
+  | BSTR  v1, BSTR  v2 => v1 == v2
+  | ESTR  v1, ESTR  v2 => v1 == v2
+  | CHR   v1, CHR   v2 => v1 == v2
+
+  # Brackets
+  | BR_OPN, BR_OPN => True
+  | BR_CLS, BR_CLS => True
+  | SBR_OPN, SBR_OPN => True
+  | SBR_CLS, SBR_CLS => True
+  | CBR_OPN, CBR_OPN => True
+  | CBR_CLS, CBR_CLS => True
+  | ATTR_OPEN, ATTR_OPEN => True
+
+  # Special symbols
+  | ARROW, ARROW => True
+  | EFF_ARROW, EFF_ARROW => True
+  | ARROW2, ARROW2 => True
+  | BAR, BAR => True
+  | COLON, COLON => True
+  | COMMA, COMMA => True
+  | DOT, DOT => True
+  | EQ, EQ => True
+  | SEMICOLON2, SEMICOLON2 => True
+  | SLASH, SLASH => True
+  | GT_DOT, GT_DOT => True
+
+  # keywords
+  | KW_ABSTR , KW_ABSTR => True
+  | KW_AS , KW_AS => True
+  | KW_DATA , KW_DATA => True
+  | KW_EFFECT , KW_EFFECT => True
+  | KW_ELSE , KW_ELSE => True
+  | KW_END , KW_END => True
+  | KW_EXTERN, KW_EXTERN=> True
+  | KW_FINALLY , KW_FINALLY => True
+  | KW_FN , KW_FN => True
+  | KW_HANDLE , KW_HANDLE => True
+  | KW_HANDLER , KW_HANDLER => True
+  | KW_IF , KW_IF => True
+  | KW_IMPORT, KW_IMPORT=> True
+  | KW_IN , KW_IN => True
+  | KW_LABEL , KW_LABEL => True
+  | KW_LET , KW_LET => True
+  | KW_MATCH , KW_MATCH => True
+  | KW_METHOD , KW_METHOD => True
+  | KW_MODULE , KW_MODULE => True
+  | KW_OF , KW_OF => True
+  | KW_OPEN, KW_OPEN=> True
+  | KW_PARAMETER , KW_PARAMETER => True
+  | KW_PUB, KW_PUB=> True
+  | KW_REC, KW_REC=> True
+  | KW_RETURN , KW_RETURN => True
+  | KW_SECTION , KW_SECTION => True
+  | KW_THEN , KW_THEN => True
+  | KW_TYPE, KW_TYPE=> True
+  | KW_WITH, KW_WITH=> True
+  | UNDERSCORE, UNDERSCORE=> True
+  | EOF, EOF=> True
+  
+  | _, _ => False
+  end
+
+method show (t : Token) =
+  match t with
+  | EOF => "EOF"
+  | CBR_OPN => "CBR_OPN"
+  | CBR_CLS => "CBR_CLS"
+  | STR s => "STR \{s.show}"
+  | BSTR s => "BSTR \{s.show}"
+  | CSTR s => "CSTR \{s.show}"
+  | ESTR s => "ESTR \{s.show}"
+  | CHR c => "CHR \{c.show}"
+  | _   => "?"
+  end
+
+method show (Pos {idx, line, col}) =
+  "Pos {idx=\{idx}, line=\{line}, col=\{col}}"
+
+method show (PosSpan {first, last}) =
+  "PosSpan {first=\{first.show}, last=\{last.show}}"
+
+method show (Tok {token, pos}) =
+  "Tok {token=\{token.show}, pos=\{pos.show}}"
+
+let unwrapToksWithPos str =
+  let st = mkLexerState str "test" in
+  let rec iter st =
+    match getTok st with
+    | Err e => [] # No EOF!
+    | Ok (tok, st) =>
+      tok ::
+        match tok with
+        | Tok {token = EOF} => []
+        | _ => iter st
+        end
+    end
+  in
+  iter st
+
+# This annotation speeds up tests massively!
+let (unwrapToks : String ->[] List Token) = fn str =>
+  List.map (fn (t : Tok) => t.token) (unwrapToksWithPos str)
+
+let () =
+  testCase "empty" (fn _ =>
+    expectEq (unwrapToks "") [EOF];
+    
+    expectEq (unwrapToks "  \n\n \t \t  \r ") [EOF]);
+
+  testCase "parenthesis" (fn _ =>
+    expectEq (unwrapToks "(") [BR_OPN, EOF];
+    
+    expectEq (unwrapToks ")") [BR_CLS, EOF];
+    
+    expectEq (unwrapToks "()") [BR_OPN, BR_CLS, EOF];
+    
+    expectEq (unwrapToks "\n\n\t   )  \n\n (") [BR_CLS, BR_OPN, EOF]);
+  
+  testCase "blockComments" (fn _ =>
+    expectEqS (unwrapToks " {# #} ") [EOF];
+    
+    expectEqS (unwrapToks " {## #} ##} ") [EOF];
+    
+    expectEqS (unwrapToks " {#aaaa#} ") [];
+
+    expectEqS (unwrapToks "{#aa\naa#}") [EOF];
+
+    expectEqS (unwrapToks "{# #} {## ##} {### ###}") [EOF]);
+
+  testCase "operators" (fn _ =>
+    expectEqS
+      (unwrapToks " + - * ^ && ||||| ")
+      [OP_80 "+", OP_80 "-", OP_90 "*", OP_70 "^", OP_50 "&&", OP_40 "|||||", EOF]);
+  
+  testCase "basic strings" (fn _ =>
+    expectEqS
+      (unwrapToks " \"my string\" \"foo\nbar\" ")
+      [STR "my string", STR "foo\nbar", EOF]);
+
+  testCase "interpolation" (fn _ =>
+    expectEqS
+      (unwrapToks " {} ")
+      [CBR_OPN, CBR_CLS, EOF];
+    
+    expectEqS
+      (unwrapToks "{}}")
+      [CBR_OPN, CBR_CLS]; # FAIL
+    
+    expectEqS
+      (unwrapToks " \"interp=\\{ {} }other=\\{++}\"  ")
+      [BSTR "interp=", CBR_OPN, CBR_CLS, CSTR "other=", OP_80 "++", ESTR "", EOF]);
+  
+  testCase "escapes" (fn _ =>
+    expectEqS
+      (unwrapToks " \"\\a \\n \\t \\xFF \\xbC\"  ")
+      [STR "\a \n \t \xff \xbc", EOF]);
+
+  testCase "chars" (fn _ =>
+    expectEqS
+      (unwrapToks " \'\\n\' ")
+      [CHR '\n', EOF];
+
+    expectEqS
+      (unwrapToks " \'a\' \'\\n\' \' \' \'\\xbc\' ")
+      [CHR 'a', CHR '\n', CHR ' ', CHR '\xBC', EOF]);
+
+  testCase "numbers" (fn _ =>
+    expectEqS
+      (unwrapToks "42 0xFf 0o75 0b1010")
+      [NUM 42, NUM 255, NUM 61, NUM 10, EOF];
+    
+    expectEqS
+      (unwrapToks "42L 0xFFL 0o75L 0b1010L")
+      [NUM64 42L, NUM64 255L, NUM64 61L, NUM64 10L, EOF];
+    
+    expectEqS (unwrapToks "1000000000000000000000") []);
+
+  testCase "identifiers" (fn _ =>
+    expectEqS
+      (unwrapToks "foo Bar ~baz ?qux")
+      [LID "foo", UID "Bar", TLID "baz", QLID "qux", EOF]);
+  
+  testCase "single line comments" (fn _ =>
+    expectEqS
+      (unwrapToks "#asdasdas")
+      [EOF];
+    
+    expectEqS
+      (unwrapToks "#anycomment\n10")
+      [NUM 10, EOF]);
+
+    ()
+
+
+let largeCode = "
+import open /List
+
+let foo = bar baz (-0L) in
+  \"my code \\{ LT }\"
+  "
+
+data TokMatch = TokMatch of Token, Int, Int, Int, Int
+
+method equal (tok : Tok) ((TokMatch t ls cs le ce)) =
+  tok.token == t
+  && tok.pos.first.line == ls
+  && tok.pos.first.col  == cs
+  && tok.pos.last.line  == le
+  && tok.pos.last.col   == ce
+
+let _ = testCase "positions" (fn _ =>
+  let toks = unwrapToksWithPos largeCode in
+  assertDoesNotCallOnError (fn _ =>
+    assertEq
+      (toks.nthErr 0)
+      (TokMatch KW_IMPORT 1 0 1 6);
+
+    assertEq
+      (toks.nthErr 1)
+      (TokMatch KW_OPEN 1 7 1 11);
+    
+    assertEq
+      (toks.nthErr 2)
+      (TokMatch SLASH 1 12 1 13);
+    
+    assertEq
+      (toks.nthErr 3)
+      (TokMatch (UID "List") 1 13 1 17);
+    
+    assertEq
+      (toks.nthErr 4)
+      (TokMatch KW_LET 3 0 3 3);
+    
+    assertEq
+      (toks.nthErr 5)
+      (TokMatch (LID "foo") 3 4 3 7);
+    
+    assertEq
+      (toks.nthErr 6)
+      (TokMatch EQ 3 8 3 9);
+    
+    assertEq
+      (toks.nthErr 7)
+      (TokMatch (LID "bar") 3 10 3 13);
+  
+    assertEq
+      (toks.nthErr 8)
+      (TokMatch (LID "baz") 3 14 3 17);
+    
+    assertEq
+      (toks.nthErr 9)
+      (TokMatch BR_OPN 3 18 3 19);
+    
+    assertEq
+      (toks.nthErr 10)
+      (TokMatch (OP_80 "-") 3 19 3 20);
+    
+    assertEq
+      (toks.nthErr 11)
+      (TokMatch (NUM64 0L) 3 20 3 22);
+
+    assertEq
+      (toks.nthErr 12)
+      (TokMatch BR_CLS 3 22 3 23);
+
+    assertEq
+      (toks.nthErr 13)
+      (TokMatch KW_IN 3 24 3 26);
+
+    assertEq
+      (toks.nthErr 14)
+      (TokMatch (BSTR "my code ") 4 2 4 13);
+
+    assertEq
+      (toks.nthErr 15)
+      (TokMatch (UID "LT") 4 14 4 16);
+    
+    assertEq
+      (toks.nthErr 16)
+      (TokMatch (ESTR "") 4 17 4 19);
+
+    assertEq
+      (toks.nthErr 17)
+      (TokMatch EOF 5 2 5 2);
+
+    ()))

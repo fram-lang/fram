@@ -1,0 +1,581 @@
+import open Tokens
+import Map as M
+import List as L
+import String as S
+
+# dubugs
+let print = extern dbl_printStrLn : String -> Unit
+let show {X, method show : X ->> String} (e : X) = print e.show
+
+# -----------------------------------------------------------------------------
+# Possible additions to stdlib
+method mem (str : String) (chr : Char) =
+  match str.findChar chr with
+  | Some _ => True
+  | None   => False
+  end
+
+method contains {?pos : Int} (str : String) (prefix : String) =
+  let startPos = pos.unwrapOr 0 in
+  if str.length - startPos < prefix.length then
+    False
+  else
+   (let rec iter i1 i2 =
+      if i1 - startPos >= prefix.length then
+        True
+      else if (str.get i1 != prefix.get i2) then
+        False
+      else
+        iter (i1 + 1) (i2 + 1)
+    in
+    iter startPos 0)
+
+method andmap opt f =
+  match opt with
+  | None   => False
+  | Some x => f x
+  end
+
+# -----------------------------------------------------------------------------
+# Fatal errors
+
+data Fatal E = {raise : {X} -> String ->[E] X}
+
+parameter E_Fatal : effect
+parameter ~err : Fatal E_Fatal
+
+let fatalH =
+  handler Fatal
+    { effect raise msg = Err msg }
+  return x => Ok x
+  end
+
+let raise str = ~err.raise str
+
+# -----------------------------------------------------------------------------
+# Reading buffer
+
+type CaretPos = Pos
+data Caret = {pos : CaretPos, str : String}
+let mkCaret str = Caret {pos = Pos {idx = 0, line = 0, col = 0}, str}
+
+method moveBy (Caret {pos = Pos {idx, line, col}, str}) len =
+  Caret {pos = Pos {idx = idx + len, line, col = col + len}, str}
+
+method moveNewLine (Caret {pos = Pos {idx, line, col}, str}) =
+  Caret {pos = Pos {idx = idx + 1, line = line + 1, col = 0}, str}
+
+method getChar (Caret {pos = Pos {idx}, str}) =
+  if idx < str.length then
+    Some (str.get idx)
+  else if idx == str.length then
+    None 
+  else
+    ~err.raise "getChar - out of position"
+
+data LexBuf E =
+  { seek      : Unit   ->[E] Unit
+  , curr      : Unit   ->[E] Option Char
+  , tryMatch  : String ->[E] Bool
+  , caret     : Unit   ->[E] Caret
+  }
+
+let lexBufH caret =
+  handler LexBuf
+    { effect seek () / r = fn (c : Caret) =>
+      r () (if c.getChar == Some '\n' then c.moveNewLine else c.moveBy 1)
+    , effect curr () / r = fn (c : Caret) =>
+      r c.getChar c
+    , effect tryMatch pattern / r = fn (c : Caret) =>
+      if c.str.contains {pos=c.pos.idx} pattern then
+       (let c = c.moveBy (pattern.length) in
+        r True c)
+      else
+        r False c
+    , effect caret () / r = fn c => r c c
+    }
+  return x => fn c => (x, c)
+  finally c => c caret
+  end
+
+parameter E_LexBuf
+parameter ~lb : LexBuf E_LexBuf
+
+let getCaret () = ~lb.caret ()
+let currChar () = ~lb.curr ()
+let tryMatch pttrn = ~lb.tryMatch pttrn
+
+# -----------------------------------------------------------------------------
+# Position tracker
+
+data LexStart = {pos : Pos, file : String}
+
+data PosTracker E =
+  { setStart    : Pos    ->[E] Unit
+  , getStart    : Unit   ->[E] Pos
+  , setFilename : String ->[E] Unit
+  }
+
+let posTrackerH pos =
+  handler PosTracker
+    { effect setStart pos / r = fn (lex : LexStart) =>
+      r () (LexStart {pos, file = lex.file})
+    , effect getStart ()  / r = fn (lex : LexStart) =>
+      r lex.pos lex
+    , effect setFilename file / r = fn (lex : LexStart) =>
+      r () (LexStart {pos = lex.pos, file})
+    }
+  return x => fn p => (x, p)
+  finally c => c pos
+  end
+
+parameter E_PosTracker
+parameter ~pt : PosTracker E_PosTracker
+
+# -----------------------------------------------------------------------------
+# Bracket Stack
+
+data BracketType =
+  | BT_Regular
+  | BT_Interp
+
+data CBracketTracker E =
+  { push : BracketType ->[E] Unit
+  , pop  : Unit        ->[E] BracketType
+  }
+
+data BracketStack =
+  { openBrackets : Int
+  , bracketStack : List Int
+  }
+
+method pushRegular (BracketStack {openBrackets, bracketStack}) =
+  BracketStack {openBrackets = openBrackets + 1, bracketStack}
+
+method pushInterp (BracketStack {openBrackets, bracketStack}) =
+  BracketStack {openBrackets = 0, bracketStack = openBrackets :: bracketStack}
+
+method popBracket (BracketStack {openBrackets, bracketStack}) =
+  if openBrackets == 0 then
+    match bracketStack with
+    | openBrackets :: bracketStack =>
+      (BT_Interp, BracketStack {openBrackets, bracketStack})
+    | _ => raise "Bracket mismatch"
+    end
+  else
+    (BT_Regular, BracketStack {openBrackets = openBrackets - 1, bracketStack})
+
+let emptyStack = BracketStack {openBrackets = 0, bracketStack = []}
+
+let cbracketTrackerH stack = 
+  handler CBracketTracker
+    { effect push ctype / r = fn (stack : BracketStack) =>
+      match ctype with
+      | BT_Regular => r () stack.pushRegular
+      | BT_Interp  => r () stack.pushInterp
+      end
+    , effect pop () / r = fn (stack : BracketStack) =>
+      let (ty, stack) = stack.popBracket in
+      r ty stack
+    }
+  return x => fn s => (x, s)
+  finally c => c stack
+  end
+
+parameter E_Brackets : effect
+parameter ~br : CBracketTracker E_Brackets
+
+# -----------------------------------------------------------------------------
+# High level utility functions
+
+let popChar () =
+  match ~lb.curr () with
+  | None => None
+  | Some ch =>
+    ~lb.seek ();
+    Some ch
+  end
+
+let forcePopChar () =
+  let ~onError () = raise "EOF" in
+  popChar () >.unwrapErr
+
+let takeWhile pred =
+  let caret = getCaret () in
+  let rec iter (count : Int) =
+    let cond =
+      match ~lb.curr () with
+      | None => False
+      | Some x => pred x
+      end
+    in
+    if cond then
+      (~lb.seek (); iter (count + 1))
+    else
+      count
+  in
+  let len = iter 0 in
+  caret.str.substring caret.pos.idx len
+
+let markTokStart () =
+  let pos = ~lb.caret () >.pos in
+  ~pt.setStart pos
+
+# -----------------------------------------------------------------------------
+# Char type predicates
+
+let isWhite (chr : Char) =
+  ('\x09' <= chr && chr <= '\r') || chr == ' ' || chr == '\t'
+
+let isDigit (chr : Char) =
+  ('0' <= chr && chr <= '9')
+
+let isHexDigit (chr : Char) =
+  isDigit chr || ('a' <= chr && chr <= 'f') || ('A' <= chr && chr <= 'F')
+
+let isOpChar = "<>&$?!@^+-~*%;,=|:./".mem
+
+let isLidStart (chr : Char) =
+  ('a' <= chr && chr <= 'z') || chr =='-'
+
+let isUidStart (chr : Char) =
+  ('A' <= chr && chr <= 'Z')
+
+let isVarChar (char : Char) =
+  isLidStart char || isUidStart char || isDigit char || (char == '\'') 
+
+let isCommentName (char : Char) =
+  not ("\x7f{}".mem char) && not ('\0' <= char && char <= ' ')
+
+# -----------------------------------------------------------------------------
+# Utils
+
+let parseHexDigit (dgt : Char) =
+  if '0' <= dgt && dgt <= '9' then
+    dgt.code - '0'.code 
+  else if 'a' <= dgt && dgt <= 'f' then
+    dgt.code - 'a'.code + 10
+  else if 'A' <= dgt && dgt <= 'F' then
+    dgt.code - 'A'.code + 10
+  else
+    raise "Invalid hexadecimal digit"
+
+let parseDecDigit (dgt : Char) =
+  if '0' <= dgt && dgt <= '9' then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid decimal digit"
+
+let parseOctDigit (dgt : Char) =
+  if '0' <= dgt && dgt <= '7' then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid octal digit"
+
+let parseBinDigit (dgt : Char) =
+  if '0' == dgt || '1' == dgt then
+    dgt.code - '0'.code 
+  else
+    raise "Invalid binary digit"
+
+# -----------------------------------------------------------------------------
+# Lexer
+
+let Map {module SMap} = M.make {Key = String}
+
+let keywords =
+  let kws =
+    [ ("abstr",     KW_ABSTR)
+    , ("as",        KW_AS)
+    , ("data",      KW_DATA)
+    , ("effect",    KW_EFFECT)
+    , ("else",      KW_ELSE)
+    , ("end",       KW_END)
+    , ("extern",    KW_EXTERN)
+    , ("finally",   KW_FINALLY)
+    , ("fn",        KW_FN)
+    , ("handle",    KW_HANDLE)
+    , ("handler",   KW_HANDLER)
+    , ("if",        KW_IF)
+    , ("import",    KW_IMPORT)
+    , ("in",        KW_IN)
+    , ("label",     KW_LABEL)
+    , ("let",       KW_LET)
+    , ("match",     KW_MATCH)
+    , ("method",    KW_METHOD)
+    , ("module",    KW_MODULE)
+    , ("of",        KW_OF)
+    , ("open",      KW_OPEN)
+    , ("parameter", KW_PARAMETER)
+    , ("pub",       KW_PUB)
+    , ("rec",       KW_REC)
+    , ("return",    KW_RETURN)
+    , ("section",   KW_SECTION)
+    , ("then",      KW_THEN)
+    , ("type",      KW_TYPE)
+    , ("with",      KW_WITH)
+    , ("_",         UNDERSCORE)
+    ]
+  in
+  kws.foldLeft (fn (m : SMap.T _) (kw, tok) => m.add kw tok) SMap.empty
+
+let tokenizeIdent ident =
+  match keywords.find ident with
+  | Some kw => kw
+  | None    => LID ident
+  end
+
+let operators =
+  let ops = 
+    [ ("->", ARROW)
+    , ("|",  BAR)
+    , ("=>", ARROW2)
+    , ("->>", EFF_ARROW)
+    , ("|",  BAR)
+    , (":",  COLON)
+    , (",",  COMMA)
+    , (".",  DOT)
+    , ("=",  EQ)
+    , (";;", SEMICOLON2)
+    , ("/",  SLASH)
+    , (">.", GT_DOT)
+    ]
+  in
+  ops.foldLeft (fn (m : SMap.T _) (kw, op) => m.add kw op) SMap.empty
+
+let tokenizeOp str =
+  match operators.find str with
+  | Some x => x
+  | None =>
+    let isLong = str.length >= 2 in
+    let longMatch chr = isLong && (str.get 1 == chr)
+    let fst = str.get 0 in
+    if (fst == '?' || fst == '~') && not isLong then
+      raise "Disallowed operator"
+    else if fst == ';' then
+      OP_0 str
+    else if fst == '<' && longMatch '-' then
+      OP_20 str
+    else if fst == ':' && longMatch '=' then
+      OP_20 str
+    else if fst == ',' then
+      OP_30 str
+    else if fst == '|' && longMatch '|' then
+      OP_40 str
+    else if fst == '&' && longMatch '&' then
+      OP_50 str
+    else if "!=<>|&$?".mem fst then
+      OP_60 str
+    else if "@:^".mem fst then
+      OP_70 str
+    else if "+-~".mem fst then
+      OP_80 str
+    else if fst == '*' && longMatch '*' then
+      OP_100 str
+    else if "*/%.".mem fst then
+      OP_90 str
+    else
+      raise "Internal operator error" 
+  end
+
+let readNum (num : String) (base : Int) (parser : Char ->[E_Fatal] Int) =
+  if num.length == 0 then
+    raise "Invalid number";
+  let rec iter (i : Int) (acc : Int) =
+    if i >= num.length then
+      NUM acc
+    else
+     (let digit = num.get i in
+      let acc = acc * base + parser digit in
+      if acc < 0 then
+        raise "Number is too big!"
+      else
+        iter (i + 1) acc)
+  in
+  iter 0 0
+
+let readNum64 (num : String) (base : Int) (parser : Char ->[E_Fatal] Int) =
+  let base = base.toInt64 in
+  if num.length == 0 then
+    raise "Invalid number";
+  let rec iter (i : Int) (acc : Int64) =
+    if i >= num.length then
+      NUM64 acc
+    else
+     (let digit = num.get i in
+      let acc = acc * base + (parser digit).toInt64 in
+      if acc < 0L then
+        raise "Number is too big!"
+      else
+        iter (i + 1) acc)
+  in
+  iter 0 0L
+
+let tokenizeNumber (num : String) =
+  let (base, parser) =
+    if num.contains "0b" then (2, parseBinDigit)
+    else if num.contains "0o" then (8, parseOctDigit)
+    else if num.contains "0x" then (16, parseHexDigit)
+    else (10, parseDecDigit)
+  let num = if base == 10 then num else num.substring 2 (num.length - 2)
+  let (num, reader) =
+    if num.get (num.length - 1) == 'L' then
+      (num.substring 0 (num.length - 1), readNum64)
+    else
+      (num, readNum)
+  in
+  reader num base parser
+
+let parseEscape () =
+  let c = forcePopChar () in
+  if "\"\'\\".mem c then
+    c
+  else if c == '0' then '\0'
+  else if c == 'n' then '\n'
+  else if c == 'b' then '\b'
+  else if c == 't' then '\t'
+  else if c == 'r' then '\r'
+  else if c == 'v' then '\v'
+  else if c == 'a' then '\a'
+  else if c == 'f' then '\f'
+  else if "xX".mem c then
+   (let ch1 = forcePopChar () in
+    let ch2 = forcePopChar () in
+    let num = parseHexDigit ch1 * 16 + parseHexDigit ch2 in
+    let ~onError () = raise "impossible" in
+    chr num)
+  else
+    raise "Invalid escape: \{c.show}"
+
+rec 
+  let token () =
+    markTokStart ();
+    match popChar () with
+    | None => EOF
+    | Some chr =>
+      if isWhite chr || chr == '\n' then token ()
+      else if chr == '#' then
+        singleComment ()
+      else if chr == '{' && tryMatch "#" then
+       (let name = takeWhile isCommentName in
+        blockComment (name + "#}"))
+      else if chr == '(' then BR_OPN
+      else if chr == ')' then BR_CLS
+      else if chr == '[' then SBR_OPN
+      else if chr == ']' then SBR_CLS
+      else if chr == '{' then
+       (~br.push BT_Regular;
+        CBR_OPN)
+      else if chr == '@' && tryMatch "{" then
+       (~br.push BT_Regular;
+        ATTR_OPEN)
+      else if chr == '}' then
+       (match ~br.pop () with
+        | BT_Regular => CBR_CLS
+        | BT_Interp  => stringToken False []
+        end)
+      # TODO Find better solution
+      else if ("?~".mem chr && (currChar ()).andmap isOpChar)
+           || (not ("?~".mem chr) && isOpChar chr) then
+       (let op = chr.toString + takeWhile isOpChar in
+        tokenizeOp op)
+      else if isLidStart chr then
+       (let tok = chr.toString + takeWhile isVarChar in
+        tokenizeIdent tok)
+      else if isUidStart chr then
+       (let uid = chr.toString + takeWhile isVarChar in
+        UID uid)
+      else if chr == '~' && (currChar ()).andmap isVarChar then
+        (TLID (takeWhile isVarChar))
+      else if chr == '?' && (currChar ()).andmap isVarChar then
+        (QLID (takeWhile isVarChar))
+      else if isDigit chr then
+       (let num = chr.toString + takeWhile isVarChar in
+        tokenizeNumber num)
+      else if chr == '\'' then
+       (let c = forcePopChar () in
+        let c = if c != '\\' then c else parseEscape () in
+        if forcePopChar () != '\'' then
+          raise "Unclosed Char"
+        else
+          CHR c)
+      else if chr == '"' then
+        stringToken True []
+      else raise "TODO"
+    end
+
+  let blockComment closing =
+    if currChar () == Some '\n' then
+      (~lb.seek ();
+       blockComment closing)
+    else if tryMatch closing then
+      token ()
+    else if currChar () == None then
+      raise "Unexpected EOF while parsing block comment"
+    else
+      (~lb.seek (); blockComment closing)
+  
+  let singleComment () =
+    if currChar () == None then # EOF
+      token ()
+    else if currChar () == Some '\n' then
+      (let _ = popChar () in token ())
+    else
+      (let _ = popChar () in singleComment ())
+
+  let stringToken isOpening buffer =
+    match popChar () with
+    | None => raise "Unclosed string token"
+    | Some chr =>
+      if chr == '\n' then
+         stringToken isOpening ('\n' :: buffer)
+      else if chr == '"' then
+       (let str = charListToStr buffer.rev in
+        if isOpening then STR str else ESTR str)
+      else if chr == '\\' && tryMatch "{" then
+       (~br.push BT_Interp;
+        let str = charListToStr buffer.rev in
+        if isOpening then BSTR str else CSTR str)
+      else if chr == '\\' then
+       (let chr = parseEscape () in
+        stringToken isOpening (chr :: buffer))
+      else
+         stringToken isOpening (chr :: buffer)
+    end
+end
+
+# -----------------------------------------------------------------------------
+# Public interface
+
+abstr data LexerState =
+  { caret : Caret
+  , start : LexStart
+  , stack : BracketStack
+  }
+
+pub let mkLexerState str file =
+  let pos = Pos {idx = 0, line = 0, col = 0} in
+  LexerState
+    { caret = Caret {str, pos}
+    , start = LexStart {file, pos}
+    , stack = emptyStack
+    }
+
+pub let getTok (LexerState {caret, start, stack}) =
+  let res = 
+    handle ~err / E_Fatal  with fatalH in
+    handle ~lb  / E_LexBuf with lexBufH caret in
+    handle ~pt  / E_PosTracker with posTrackerH
+      (LexStart {pos = caret.pos, file = start.file}) in
+    handle ~br  / E_Brackets with cbracketTrackerH stack in
+      token ()
+  in
+  match res with
+  | Err s => Err s
+  | Ok (((token, stack), start), caret) =>
+    Ok ( Tok { token
+             , pos = PosSpan { first = start.pos
+                             , last = caret.pos
+                             , file = start.file}}
+       , LexerState {stack, start, caret})
+  end
