@@ -217,6 +217,10 @@ let takeWhile pred =
   let len = iter 0 in
   caret.str.substring caret.pos.idx len
 
+let markTokStart () =
+  let pos = ~lb.caret () >.pos in
+  ~pt.setStart pos
+
 # -----------------------------------------------------------------------------
 # Char type predicates
 
@@ -445,6 +449,7 @@ let parseEscape () =
 
 rec 
   let token () =
+    markTokStart ();
     match popChar () with
     | None => EOF
     | Some chr =>

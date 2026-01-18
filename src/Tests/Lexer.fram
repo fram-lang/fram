@@ -103,6 +103,15 @@ method show (t : Token) =
   | _   => "?"
   end
 
+method show (Pos {idx, line, col}) =
+  "Pos {idx=\{idx}, line=\{line}, col=\{col}}"
+
+method show (PosSpan {first, last}) =
+  "PosSpan {first=\{first.show}, last=\{last.show}}"
+
+method show (Tok {token, pos}) =
+  "Tok {token=\{token.show}, pos=\{pos.show}}"
+
 let unwrapToksWithPos str =
   let st = mkLexerState str "test" in
   let rec iter st =
@@ -208,8 +217,8 @@ let largeCode = "
 import open /List
 
 let foo = bar baz (-0L) in
-  \"my code \\{ LT \\}\"
-"
+  \"my code \\{ LT }\"
+  "
 
 data TokMatch = TokMatch of Token, Int, Int, Int, Int
 
@@ -225,16 +234,74 @@ let _ = testCase "positions" (fn _ =>
   assertDoesNotCallOnError (fn _ =>
     assertEq
       (toks.nthErr 0)
-      (TokMatch KW_IMPORT 0 0 1 6);
-    
+      (TokMatch KW_IMPORT 1 0 1 6);
+
     assertEq
       (toks.nthErr 1)
-      (TokMatch KW_OPEN 1 6 1 11);
+      (TokMatch KW_OPEN 1 7 1 11);
     
     assertEq
       (toks.nthErr 2)
-      (TokMatch SLASH 1 11 1 13);
+      (TokMatch SLASH 1 12 1 13);
     
     assertEq
       (toks.nthErr 3)
-      (TokMatch (UID "List") 1 13 1 17)))
+      (TokMatch (UID "List") 1 13 1 17);
+    
+    assertEq
+      (toks.nthErr 4)
+      (TokMatch KW_LET 3 0 3 3);
+    
+    assertEq
+      (toks.nthErr 5)
+      (TokMatch (LID "foo") 3 4 3 7);
+    
+    assertEq
+      (toks.nthErr 6)
+      (TokMatch EQ 3 8 3 9);
+    
+    assertEq
+      (toks.nthErr 7)
+      (TokMatch (LID "bar") 3 10 3 13);
+  
+    assertEq
+      (toks.nthErr 8)
+      (TokMatch (LID "baz") 3 14 3 17);
+    
+    assertEq
+      (toks.nthErr 9)
+      (TokMatch BR_OPN 3 18 3 19);
+    
+    assertEq
+      (toks.nthErr 10)
+      (TokMatch (OP_80 "-") 3 19 3 20);
+    
+    assertEq
+      (toks.nthErr 11)
+      (TokMatch (NUM64 0L) 3 20 3 22);
+
+    assertEq
+      (toks.nthErr 12)
+      (TokMatch BR_CLS 3 22 3 23);
+
+    assertEq
+      (toks.nthErr 13)
+      (TokMatch KW_IN 3 24 3 26);
+
+    assertEq
+      (toks.nthErr 14)
+      (TokMatch (BSTR "my code ") 4 2 4 13);
+
+    assertEq
+      (toks.nthErr 15)
+      (TokMatch (UID "LT") 4 14 4 16);
+    
+    assertEq
+      (toks.nthErr 16)
+      (TokMatch (ESTR "") 4 17 4 19);
+
+    assertEq
+      (toks.nthErr 17)
+      (TokMatch EOF 5 2 5 2);
+
+    ()))
